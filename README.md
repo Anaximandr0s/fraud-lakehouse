@@ -10,11 +10,12 @@ Requires [uv](https://docs.astral.sh/uv/), GNU Make and Docker Compose.
 
 ```
 cp .env.example .env   # then replace the change-me passwords
-make up-core           # downloads pinned jars, starts MinIO, Postgres, Hive Metastore
+make up-core           # downloads pinned jars, builds the Spark image, starts the core services
 make help
 ```
 
-MinIO console: http://localhost:9001 (login from `.env`).
+UIs: MinIO console http://localhost:9001 (login from `.env`), Spark master http://localhost:8080,
+Spark Thrift Server http://localhost:4041. `make beeline` opens a SQL shell on the Thrift Server.
 
 ## How it works
 
@@ -23,9 +24,9 @@ See [docs/architecture.md](docs/architecture.md): data flow, components, tables 
 ## Tests
 
 `make lint test` runs ruff and pytest. CI (`.github/workflows/ci.yml`) runs the same on every push and pull request,
-and validates `compose.yaml`.
+validates `compose.yaml` and lints `spark/Dockerfile` with hadolint.
 
 ## Limits
 
-Build step 1 (of steps 0–9): storage and catalog only. Hive Metastore is pinned to 3.1.3, the newest version
-Spark 3.5 can talk to ([ADR 0001](docs/adr/0001-iceberg-catalog.md)).
+Build step 2 (of steps 0–9): storage, catalog and Spark (master, worker, Thrift Server); no ingestion yet.
+Hive Metastore is pinned to 3.1.3, the newest version Spark 3.5 can talk to ([ADR 0001](docs/adr/0001-iceberg-catalog.md)).

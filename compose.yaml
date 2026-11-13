@@ -1,5 +1,19 @@
 name: fraud-lakehouse
 
+x-spark: &spark
+  image: fraud-lakehouse-spark:local
+  build:
+    context: .
+    dockerfile: spark/Dockerfile
+    args:
+      SPARK_IMAGE: ${SPARK_IMAGE:?}
+  restart: unless-stopped
+
+x-s3-env: &s3-env
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+  AWS_REGION: us-east-1
+
 services:
   minio:
     image: ${MINIO_IMAGE:?}
@@ -109,6 +123,77 @@ services:
     restart: unless-stopped
     mem_limit: 640m
 
+  spark-master:
+    <<: *spark
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master
+    environment:
+      # Daemons default to a 1g heap, above this container's limit.
+      SPARK_DAEMON_MEMORY: 256m
+      # Without recovery a restarted master forgets running apps, and their drivers wait forever.
+      SPARK_MASTER_OPTS: >-
+        -Dspark.deploy.recoveryMode=FILESYSTEM
+        -Dspark.deploy.recoveryDirectory=/opt/spark/recovery
+    volumes:
+      - spark-recovery:/opt/spark/recovery
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 512m
+
+  spark-worker:
+    <<: *spark
+    # Executors advertise this host to drivers; the default container hostname is not resolvable.
+    command: >-
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      --host spark-worker spark://spark-master:7077
+    environment:
+      <<: *s3-env
+      SPARK_DAEMON_MEMORY: 256m
+      SPARK_WORKER_CORES: 6
+      SPARK_WORKER_MEMORY: 1920m
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    mem_limit: 3584m
+
+  spark-thrift:
+    <<: *spark
+    command: >-
+      /opt/spark/sbin/start-thriftserver.sh
+      --driver-memory 640m
+      --conf spark.driver.host=spark-thrift
+      --conf spark.scheduler.mode=FAIR
+    environment:
+      <<: *s3-env
+      SPARK_NO_DAEMONIZE: "true"
+    ports:
+      - "10000:10000"
+      - "4041:4040"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/10000"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      spark-worker:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+    mem_limit: 1g
+
 volumes:
   minio-data:
   postgres-data:
+  spark-recovery:
