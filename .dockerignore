@@ -1,0 +1,4 @@
+# The build context is the repo root; data/ alone is hundreds of MB.
+*
+!jars/spark/
+!spark/conf/

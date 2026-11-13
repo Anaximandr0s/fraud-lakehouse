@@ -181,7 +181,9 @@ Other profiles: `orchestration` (Airflow 2 G) · `bi` (Metabase 1 G) · `noteboo
 `monitoring` (< 0.9 G). All profiles ≈ 13 GB of limits.
 
 spark-worker: 3 executors × (640 MB + 384 MB overhead) ≈ 3 GB, plus the worker daemon, fits in 3.5 G.
-These are computed from Spark defaults, not measured; step 2 measures them.
+Measured in step 2 (`docker stats`, idle right after a Beeline create/insert/select on a 2-row Iceberg table):
+spark-worker 674 MiB · spark-thrift 555 MiB · spark-master 225 MiB · hive-metastore 341 MiB · postgres 96 MiB ·
+minio 95 MiB. The worker figure holds only the thrift executor; streaming load is measured in step 4.
 
 `make up-all` is for demos only. Daily development runs `core` + one profile.
 

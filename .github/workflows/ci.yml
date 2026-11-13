@@ -48,3 +48,19 @@ jobs:
             echo "|---|---|"
             echo "| docker compose config | ${{ steps.config.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  hadolint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - id: hadolint
+        run: docker run --rm -i hadolint/hadolint:v2.15.1 < spark/Dockerfile
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Dockerfile"
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| hadolint spark/Dockerfile | ${{ steps.hadolint.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

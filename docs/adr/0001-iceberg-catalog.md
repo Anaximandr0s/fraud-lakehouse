@@ -1,6 +1,6 @@
 # 0001 — Iceberg catalog: Hive Metastore 3.1.3
 
-**Context.** Step 1 spike (`make spike`): from a throwaway Spark 3.5.9 container with Iceberg 1.12.0, create a
+**Context.** Step 1 spike (`make spike`, removed in step 2 when Beeline replaced it): from a throwaway Spark 3.5.9 container with Iceberg 1.12.0, create a
 namespace at `s3a://lakehouse/warehouse/spike.db`, an Iceberg table, insert and select, through the Hive Metastore.
 Hive Metastore 4.2.1 and 4.0.1 both fail with `Invalid method name: 'get_table'`: Hive 4 removed that Thrift call,
 and Spark 3.5's built-in Hive client (2.3.9, used by Iceberg's `HiveCatalog`) supports metastores up to 3.1.3 only.
