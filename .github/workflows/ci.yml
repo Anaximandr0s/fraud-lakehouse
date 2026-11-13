@@ -14,4 +14,37 @@ jobs:
         with:
           version: "0.13.7"
       - run: uv sync --locked
-      - run: make lint test
+      - id: lint
+        run: make lint
+      - id: test
+        run: make test | tee pytest.log
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Python"
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| lint | ${{ steps.lint.outcome }} |"
+            echo "| test | ${{ steps.test.outcome }} |"
+            if [ -f pytest.log ]; then
+              echo
+              echo "pytest: $(tail -n 1 pytest.log | tr -d '=' | xargs)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  compose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - id: config
+        run: docker compose --env-file .env.example config -q
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Compose"
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| docker compose config | ${{ steps.config.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,114 @@
+name: fraud-lakehouse
+
+services:
+  minio:
+    image: ${MINIO_IMAGE:?}
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    mem_limit: 512m
+
+  minio-init:
+    # Reuses the MinIO image, which already ships `mc`.
+    image: ${MINIO_IMAGE:?}
+    entrypoint: ["bash", "-c"]
+    command:
+      - mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        && mc mb --ignore-existing local/lakehouse
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  postgres:
+    image: ${POSTGRES_IMAGE:?}
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      METASTORE_DB_PASSWORD: ${METASTORE_DB_PASSWORD:?}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?}
+      METABASE_DB_PASSWORD: ${METABASE_DB_PASSWORD:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    mem_limit: 384m
+
+  hive-schema-init:
+    # Hive 3's `-initSchema` fails once the schema exists, so it runs only when `-info` finds none.
+    image: ${HIVE_IMAGE:?}
+    entrypoint: ["bash", "-c"]
+    command:
+      - for action in -info -initSchema; do
+          schematool -dbType postgres "$$action" -driver org.postgresql.Driver
+          -url jdbc:postgresql://postgres:5432/metastore
+          -userName metastore -passWord "$$METASTORE_DB_PASSWORD" && exit 0;
+        done; exit 1
+    environment:
+      METASTORE_DB_PASSWORD: ${METASTORE_DB_PASSWORD:?}
+    volumes:
+      # Replaces the image's 2016 driver, which cannot do SCRAM-SHA-256 (the Postgres default).
+      - ./jars/hive/postgresql-${POSTGRES_JDBC_VERSION:?}.jar:/opt/hive/lib/postgresql-9.4.1208.jre7.jar:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  hive-metastore:
+    image: ${HIVE_IMAGE:?}
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      IS_RESUME: "true"
+      # The image already passes -Xmx1G; a later -Xmx wins, which keeps the heap under mem_limit.
+      SERVICE_OPTS: >-
+        -Xmx384m
+        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore
+        -Djavax.jdo.option.ConnectionUserName=metastore
+        -Djavax.jdo.option.ConnectionPassword=${METASTORE_DB_PASSWORD:?}
+        -Dhive.metastore.warehouse.dir=s3a://lakehouse/warehouse
+      HIVE_CUSTOM_CONF_DIR: /hive-custom-conf
+      # The image ships hadoop-aws in Hadoop's tools dir, which is off the classpath by default.
+      HADOOP_OPTIONAL_TOOLS: hadoop-aws
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+    volumes:
+      - ./hive/conf:/hive-custom-conf:ro
+      - ./jars/hive/postgresql-${POSTGRES_JDBC_VERSION:?}.jar:/opt/hive/lib/postgresql-9.4.1208.jre7.jar:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/9083"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    depends_on:
+      hive-schema-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    mem_limit: 640m
+
+volumes:
+  minio-data:
+  postgres-data:

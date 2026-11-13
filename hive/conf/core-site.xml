@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Credentials come from the AWS_* environment variables, so no secret lives in this file. -->
+<configuration>
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>http://minio:9000</value>
+  </property>
+  <property>
+    <!-- MinIO serves buckets as paths, not as DNS subdomains -->
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+  </property>
+</configuration>
