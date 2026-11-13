@@ -48,17 +48,17 @@ Streaming and the producer are services (`restart: unless-stopped`), not Airflow
 Source: Kaggle `kartik2112/fraud-detection` (simulated with Sparkov). Downloaded and merged by `make data`:
 
 ```bash
-printf 'Authorization: Bearer %s\n' "${KAGGLE_API_TOKEN:-$(cat ~/.kaggle/access_token)}" \
-  | curl -fsSL -H @- -o data/raw/fraud-detection.zip \
-      https://www.kaggle.com/api/v1/datasets/download/kartik2112/fraud-detection
+curl -fsSL -o data/raw/fraud-detection.zip \
+  https://www.kaggle.com/api/v1/datasets/download/kartik2112/fraud-detection
 ```
 
-- Authentication: the Kaggle API token is sent as an HTTP header. It comes from `KAGGLE_API_TOKEN` if set,
-  else from `~/.kaggle/access_token` (chmod 600). The header goes through stdin (`-H @-`), so the token never
-  appears in the code, the logs, or the process list. Checked in step 3.
+- No authentication: checked in step 3, the public dataset downloads without a Kaggle token. `curl -f` fails
+  loudly if Kaggle ever requires one.
 - The zip contains `fraudTrain.csv` (1,296,675 rows, 2019-01-01 → 2020-06-21) and `fraudTest.csv` (555,719 rows, 2020-06-21 → 2020-12-31).
-- `scripts/prepare_data.py`: drop the unnamed index column, concatenate, sort by `trans_date_trans_time`,
-  check 23 columns, unique `trans_num`, row count = 1,852,394; write `data/fraud_all.csv` (9,651 frauds, 0.52 %).
+- `scripts/prepare_data.py` reads both CSVs inside the zip: check the 23-column raw header, drop the unnamed index
+  column, sort `fraudTrain.csv` by `trans_date_trans_time` (1,858 rows are out of order; `fraudTest.csv` is sorted;
+  about 2.2 GB peak memory, once), concatenate (train ends where test starts), check 22 columns per row, time order,
+  unique `trans_num`, row count = 1,852,394; write `data/fraud_all.csv` (9,651 frauds, 0.52 %).
 - The two files split during 2020-06-21. The first `trans_date_trans_time` of `fraudTest.csv` is stored as
   `TEST_SPLIT_TS` in `src/fraud_lakehouse/schemas.py`; `prepare_data.py` checks it.
 - `make data` is idempotent: skips the download if the zip exists, skips the merge if the output is valid.

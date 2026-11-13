@@ -21,6 +21,23 @@ wheels = [
 ]
 
 [[package]]
+name = "confluent-kafka"
+version = "2.16.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/67/c254f3f4a2d9d6cdf8b87fcef149b8d1b043b4598ecc8b9e0e92eca60f12/confluent_kafka-2.16.1.tar.gz", hash = "sha256:ec1474347615b9dd1bd0e269d37e31fa442782e67c4942661751e81b09d9f0c8", size = 453708, upload-time = "2026-10-28T05:37:43.925Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0f/55/21163513fe1d29dd563927ea93e0f44727120a75e90db51b163d34e70374/confluent_kafka-2.16.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:6b05d8330289735f1035285a14c3b6d262abe13bca64adbdf3908350182bf4a9", size = 4527172, upload-time = "2026-10-28T05:36:29.088Z" },
+    { url = "https://files.pythonhosted.org/packages/29/27/24f61fa974dfe8b05b86160d7901a87c55cecca1eebe3727f094518d66cc/confluent_kafka-2.16.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:da265690af79296a3fd2d469c6768dd5334cb2f8ff54a2833690f82faae83835", size = 4496802, upload-time = "2026-10-28T05:36:31.599Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/56/72ddc0af1954b55f8a9791b3c1b4dd9fcd2004a48d5245dd7ffe65035d63/confluent_kafka-2.16.1-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:6c50cc9ec1c681c97edcf4f4cef6e7a7aee4f4db3812390460c4b35a73fd0e7b", size = 5145529, upload-time = "2026-10-28T05:36:33.231Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/e5/012fadfd11d0f9613e0050f7e3752358dbfeafec3f01787d19f873f316d3/confluent_kafka-2.16.1-cp310-cp310-manylinux_2_28_s390x.whl", hash = "sha256:03c87d997f4514c746edebc751110af71d8799db8ba9314a5169f0263a43e1c9", size = 6092854, upload-time = "2026-10-28T05:36:35.533Z" },
+    { url = "https://files.pythonhosted.org/packages/db/2d/224bdb41c5ba5b46f289f40cec945655c753342ed82fd94573b1d956847d/confluent_kafka-2.16.1-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:5c5315512475f1b029b0cc1483a811a2263fa0907f61ebd0e27ff7acc5ce86e2", size = 4958516, upload-time = "2026-10-28T05:36:37.035Z" },
+    { url = "https://files.pythonhosted.org/packages/00/d3/122c40a497a4c9f072246d4bb83b62f52c05a4316f6c346df9cee641aafb/confluent_kafka-2.16.1-cp310-cp310-win_amd64.whl", hash = "sha256:0c35f0f682e5835b9c04a21ac1fd4d924878a14fc03707f7ad8040bca0861396", size = 4709443, upload-time = "2026-10-28T05:36:38.558Z" },
+]
+
+[[package]]
 name = "distlib"
 version = "0.4.4"
 source = { registry = "https://pypi.org/simple" }
@@ -61,6 +78,9 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+producer = [
+    { name = "confluent-kafka" },
+]
 
 [package.metadata]
 
@@ -70,6 +90,7 @@ dev = [
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "ruff", specifier = ">=0.17.5" },
 ]
+producer = [{ name = "confluent-kafka", specifier = ">=2.16.1" }]
 
 [[package]]
 name = "identify"

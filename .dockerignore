@@ -2,3 +2,9 @@
 *
 !jars/spark/
 !spark/conf/
+!producer/
+!src/
+!pyproject.toml
+!uv.lock
+!README.md
+**/__pycache__

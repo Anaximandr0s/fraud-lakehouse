@@ -53,14 +53,18 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
-      - id: hadolint
+      - id: spark
         run: docker run --rm -i hadolint/hadolint:v2.15.1 < spark/Dockerfile
+      - id: producer
+        if: always()
+        run: docker run --rm -i hadolint/hadolint:v2.15.1 < producer/Dockerfile
       - name: Job summary
         if: always()
         run: |
           {
-            echo "### Dockerfile"
+            echo "### Dockerfiles"
             echo "| Check | Result |"
             echo "|---|---|"
-            echo "| hadolint spark/Dockerfile | ${{ steps.hadolint.outcome }} |"
+            echo "| hadolint spark/Dockerfile | ${{ steps.spark.outcome }} |"
+            echo "| hadolint producer/Dockerfile | ${{ steps.producer.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
