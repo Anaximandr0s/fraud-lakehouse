@@ -1,6 +1,6 @@
 import pytest
 
-from fraud_lakehouse.config import ProducerConfig
+from fraud_lakehouse.config import ProducerConfig, StreamingConfig
 
 ENV = {
     "KAFKA_BOOTSTRAP": "kafka:9092",
@@ -30,3 +30,25 @@ def test_from_env_fails_on_a_missing_setting():
 
     with pytest.raises(KeyError, match="KAFKA_TOPIC"):
         ProducerConfig.from_env(env)
+
+
+STREAMING_ENV = {
+    "KAFKA_BOOTSTRAP": "kafka:9092",
+    "KAFKA_TOPIC": "transactions",
+    "CHECKPOINT_DIR": "/opt/spark/checkpoints/streaming",
+    "MAX_OFFSETS_PER_TRIGGER": "50000",
+    "HASH_SALT": "s3cret",
+}
+
+
+def test_streaming_config_reads_every_setting():
+    config = StreamingConfig.from_env(STREAMING_ENV)
+
+    assert config.max_offsets_per_trigger == 50000
+    assert config.hash_salt == "s3cret"
+
+
+@pytest.mark.parametrize(("name", "value"), [("MAX_OFFSETS_PER_TRIGGER", "0"), ("HASH_SALT", "")])
+def test_streaming_config_rejects_empty_or_non_positive_values(name, value):
+    with pytest.raises(ValueError, match=name):
+        StreamingConfig.from_env({**STREAMING_ENV, name: value})

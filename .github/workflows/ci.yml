@@ -13,6 +13,13 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.7"
+          # Keeps the ~300 MB PySpark wheel between runs.
+          enable-cache: true
+      # PySpark tests need a JVM; 17 matches the Spark image.
+      - uses: actions/setup-java@v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
       - run: uv sync --locked
       - id: lint
         run: make lint
