@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help lint test jars data build up-core down logs beeline reset-producer
+.PHONY: help lint test jars data build up-core down logs beeline reset-producer silver-count reset-streaming
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -40,6 +40,18 @@ logs: ## Follow one service's logs: make logs s=minio
 beeline: ## SQL shell on the Spark Thrift Server
 	docker compose run --rm --no-deps spark-thrift /opt/spark/bin/beeline -u jdbc:hive2://spark-thrift:10000
 
+silver-count: ## Row counts of Bronze and Silver, and Silver duplicates (should be 0)
+	docker compose run --rm --no-deps -T spark-thrift /opt/spark/bin/beeline --silent=true \
+		-u jdbc:hive2://spark-thrift:10000 -e "SELECT \
+		(SELECT count(*) FROM bronze.transactions_raw) AS bronze, \
+		(SELECT count(*) FROM silver.transactions) AS silver, \
+		(SELECT count(*) - count(DISTINCT trans_num) FROM silver.transactions) AS silver_duplicates, \
+		(SELECT count(*) FROM silver.transactions_rejected) AS rejected"
+
 reset-producer: ## Stop the producer and make it replay the CSV from the start
 	docker compose stop producer
 	docker compose run --rm --no-deps --entrypoint rm producer -f /state/position
+
+reset-streaming: ## Stop streaming and delete its checkpoint: it restarts from the earliest Kafka offset
+	docker compose stop spark-streaming
+	docker compose run --rm --no-deps --entrypoint rm spark-streaming -r -f /opt/spark/checkpoints/streaming

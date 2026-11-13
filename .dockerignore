@@ -2,6 +2,7 @@
 *
 !jars/spark/
 !spark/conf/
+!spark/jobs/
 !producer/
 !src/
 !pyproject.toml

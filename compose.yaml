@@ -193,6 +193,43 @@ services:
         condition: service_healthy
     mem_limit: 1g
 
+  spark-streaming:
+    <<: *spark
+    command: >-
+      /opt/spark/bin/spark-submit
+      --driver-memory 512m
+      --conf spark.driver.host=spark-streaming
+      /opt/spark/jobs/streaming.py
+    environment:
+      <<: *s3-env
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_TOPIC: transactions
+      CHECKPOINT_DIR: /opt/spark/checkpoints/streaming
+      MAX_OFFSETS_PER_TRIGGER: ${MAX_OFFSETS_PER_TRIGGER:?}
+      HASH_SALT: ${HASH_SALT:?}
+      # glibc gives each thread its own malloc arena: measured 266 MB outside the JVM's own memory, 53 MB with 2.
+      MALLOC_ARENA_MAX: "2"
+    volumes:
+      # Local, not s3a://: checkpoint commits rely on atomic renames, which S3A does not offer.
+      - spark-checkpoints:/opt/spark/checkpoints
+    ports:
+      - "4040:4040"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/4040"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      spark-worker:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    # A 512m driver heap measured 742 MB of JVM RSS, so 768m left no room.
+    mem_limit: 1g
+
   kafka:
     image: ${KAFKA_IMAGE:?}
     environment:
@@ -281,3 +318,4 @@ volumes:
   spark-recovery:
   kafka-data:
   producer-state:
+  spark-checkpoints:

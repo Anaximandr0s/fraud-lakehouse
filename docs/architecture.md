@@ -87,16 +87,19 @@ Bronze can hold duplicate rows (acceptable for raw data); Silver stays unique th
 ### silver.transactions — one row per `trans_num`, partitioned by `months(trans_ts)`
 Transformations, in order: parse JSON with a fixed schema → cast types → validate →
 clean (strip `fraud_`, `card_hash = sha2(concat(HASH_SALT, cc_num), 256)`, drop `cc_num, first, last, street, dob, unix_time`) →
-enrich (`age` at `trans_ts`, `distance_km` haversine, `hour_of_day`, `day_of_week`) →
+enrich (`age` in full years at `trans_ts`, `distance_km` haversine, `hour_of_day`, `day_of_week` 1 = Sunday … 7) →
 deduplicate on `trans_num` within the batch (`MERGE` fails if two source rows match one target row) → `MERGE` on `trans_num`.
 `HASH_SALT` comes from `.env`. Table property `write.merge.mode=merge-on-read`; nightly compaction rewrites the delete files.
 
 Columns: `trans_num, trans_ts, event_ts, card_hash, merchant, category, amt, gender, city, state, zip, lat, long,
 merch_lat, merch_long, city_pop, job, age, distance_km, hour_of_day, day_of_week, is_fraud, ingest_ts`.
 
-Validation rules (failure → `silver.transactions_rejected(raw_value, reason, ingest_ts)`):
-`trans_num` not null · `trans_ts` valid · `amt > 0` · `category` in the 14 known values ·
-lat in [-90, 90], long in [-180, 180] · `is_fraud` in (0, 1).
+Validation rules, checked in this order; the first failure is the `reason` in
+`silver.transactions_rejected(raw_value, reason, ingest_ts)`:
+JSON parses (`malformed_json`) · `trans_num` not null (`trans_num_null`) · `trans_ts` valid (`trans_ts_invalid`) ·
+`amt > 0` (`amt_not_positive`) · `category` in the 14 known values (`category_unknown`) ·
+lat and merch_lat in [-90, 90], long and merch_long in [-180, 180] (`coordinates_out_of_range`) ·
+`is_fraud` in (0, 1) (`is_fraud_invalid`).
 
 ### gold.* — built by dbt from `stg_transactions` (view over Silver)
 
@@ -175,15 +178,25 @@ SMTP is a Gmail account with an app password. Settings come from `.env`:
 
 ## 9. Resources (memory limits)
 
-core profile ≈ 8 GB: spark-worker 3.5 G · spark-thrift 1 G · spark-streaming 768 M · kafka 768 M ·
+core profile ≈ 8.25 GB: spark-worker 3.5 G · spark-thrift 1 G · spark-streaming 1 G · kafka 768 M ·
 hive-metastore 640 M · minio 512 M · spark-master 512 M · postgres 384 M · producer 128 M.
 Other profiles: `orchestration` (Airflow 2 G) · `bi` (Metabase 1 G) · `notebook` (Jupyter 1 G) ·
-`monitoring` (< 0.9 G). All profiles ≈ 13 GB of limits.
+`monitoring` (< 0.9 G). All profiles ≈ 13.25 GB of limits.
 
 spark-worker: 3 executors × (640 MB + 384 MB overhead) ≈ 3 GB, plus the worker daemon, fits in 3.5 G.
 Measured in step 2 (`docker stats`, idle right after a Beeline create/insert/select on a 2-row Iceberg table):
 spark-worker 674 MiB · spark-thrift 555 MiB · spark-master 225 MiB · hive-metastore 341 MiB · postgres 96 MiB ·
-minio 95 MiB. The worker figure holds only the thrift executor; streaming load is measured in step 4.
+minio 95 MiB. The worker figure holds only the thrift executor.
+
+Measured in step 4, all core services running (`docker stats`):
+- spark-streaming first had 768 M: its 512m-heap driver reached 742 MB of JVM RSS and the container hit its limit
+  257 times at RATE=20. About 266 MB were glibc malloc arenas outside the JVM's own memory (Native Memory
+  Tracking); `MALLOC_ARENA_MAX=2` brought that to 53 MB, and the limit went to 1 G.
+- RATE=20, after 7 batches of 600 events: spark-worker 2.0 GiB · spark-streaming 685 MiB · spark-thrift 623 MiB ·
+  kafka 539 MiB · hive-metastore 321 MiB · spark-master 295 MiB · minio 288 MiB · postgres 97 MiB · producer 18 MiB.
+- RATE=500 for 10 min (batches of 15,000 events every 30 s), peak of 28 samples: spark-worker 1759 MiB ·
+  spark-streaming 768 MiB · spark-thrift 550 MiB · kafka 527 MiB · hive-metastore 338 MiB · minio 293 MiB ·
+  spark-master 269 MiB · postgres 106 MiB · producer 20 MiB. spark-streaming never reached its limit.
 
 `make up-all` is for demos only. Daily development runs `core` + one profile.
 
