@@ -29,3 +29,5 @@ dbt/logs/
 .vscode/
 .idea/
 .DS_Store
+# Jars (downloaded by `make jars`)
+jars/

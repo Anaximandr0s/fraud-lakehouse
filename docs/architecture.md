@@ -23,7 +23,7 @@ Storage: Iceberg tables on MinIO (s3a://lakehouse/warehouse), catalog = Hive Met
 | producer | built from `producer/` | replays `fraud_all.csv` at `RATE` events/s (default 20; `RATE=500` on first run replays everything in ~1 h); keeps original dates, adds `event_ts`; stores its position to resume after restart; at the end of the file it logs and stays idle (exiting would loop under `restart: unless-stopped`) |
 | minio | `pgsty/minio` | S3 storage, bucket `lakehouse` (upstream MinIO no longer publishes images) |
 | postgres | `postgres` | one instance, 3 databases: `metastore`, `airflow`, `metabase` |
-| hive-metastore | `apache/hive` (standalone metastore) | Iceberg catalog, port 9083; the image lacks the Postgres JDBC driver and `hadoop-aws`, which are mounted as jars |
+| hive-metastore | `apache/hive` 3.1.3 (metastore service) | Iceberg catalog, port 9083; pinned to 3.1.3, the newest metastore Spark 3.5's Hive client accepts (ADR 0001); the pinned Postgres JDBC driver replaces the image's old one; S3A uses the image's own `hadoop-aws` |
 | spark-master / spark-worker | built from `spark/` (on `apache/spark` 3.5, Python 3.10) | Spark Standalone; worker 6 cores, `SPARK_WORKER_MEMORY=1920m` |
 | spark-streaming | same Spark image | long-running job: Kafka → Bronze → Silver in one `foreachBatch` |
 | spark-thrift | same Spark image | JDBC SQL endpoint on port 10000, FAIR scheduler |
@@ -194,7 +194,7 @@ Every service gets its healthcheck, restart policy and memory limit in the step 
 |---|---|---|
 | 0 | Repo skeleton: README, `.gitignore`, `.env.example`, Makefile, `pyproject.toml` (uv, ruff, pytest), pre-commit, CI, LICENSE | `make lint test` passes locally; CI green |
 | 1 | Storage: MinIO + bucket init, Postgres + 3 DBs, Hive Metastore. Starts with a spike: from a throwaway Spark container, create a database with an `s3a://` location and an Iceberg table. If it does not work after 1 h of effort, switch to the Iceberg JDBC catalog on Postgres. Result recorded in an ADR | spike result in ADR; bucket visible in console; catalog answers |
-| 2 | Spark + Iceberg: master, worker, thrift | Beeline: create Iceberg table, insert, select; files visible in MinIO; container memory measured |
+| 2 | Spark + Iceberg: master, worker, thrift. Iceberg tables live in the default catalog (`spark_catalog` = `SparkSessionCatalog`, type `hive`, `spark.hadoop.hive.metastore.uris=thrift://hive-metastore:9083`), so dbt and Metabase see them without a catalog prefix | Beeline: create Iceberg table, insert, select; files visible in MinIO; container memory measured |
 | 3 | Data + ingestion: `make data`, Kafka, producer | `fraud_all.csv` = 1,852,394 rows; JSON events visible with `kafka-console-consumer`; Kaggle auth need checked |
 | 4 | Streaming: Bronze + Silver | `count(*)` grows every 30 s; after container restart, no duplicates in Silver |
 | 5 | dbt + Airflow: Gold | both DAGs green; Gold tables filled; `dbt test` passes |
@@ -207,7 +207,7 @@ Every service gets its healthcheck, restart policy and memory limit in the step 
 
 - Iceberg over plain Parquet: atomic commits on S3, `MERGE` for dedup, compaction, time travel.
 - Hive Metastore as catalog: shared by streaming, thrift and Jupyter; Metabase sees tables in the default catalog.
-  Kept only if the step-1 spike passes; otherwise Iceberg JDBC catalog on Postgres (ADR).
+  Spike passed on Hive 3.1.3 (ADR 0001); JDBC catalog fallback not needed.
 - Spark Standalone instead of YARN; Spark Thrift Server instead of HiveServer2.
 - Python 3.10 everywhere: one version, the one of the Spark image, so driver and workers always match.
 - Streaming: one `foreachBatch` for Bronze and Silver instead of two queries; simpler, Bronze may hold replay duplicates (ADR).
