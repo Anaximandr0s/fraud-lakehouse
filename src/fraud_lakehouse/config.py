@@ -11,6 +11,7 @@ class ProducerConfig:
     data_file: Path
     position_file: Path
     heartbeat_file: Path
+    metrics_port: int
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "ProducerConfig":
@@ -24,6 +25,7 @@ class ProducerConfig:
             data_file=Path(env["DATA_FILE"]),
             position_file=Path(env["POSITION_FILE"]),
             heartbeat_file=Path(env["HEARTBEAT_FILE"]),
+            metrics_port=int(env["METRICS_PORT"]),
         )
 
 

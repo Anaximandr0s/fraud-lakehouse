@@ -78,9 +78,8 @@ def main() -> None:
         .load()
     )
     query = (
-        kafka.writeStream.foreachBatch(
-            lambda batch, batch_id: write_batch(batch, batch_id, config.hash_salt)
-        )
+        kafka.writeStream.queryName("transactions")
+        .foreachBatch(lambda batch, batch_id: write_batch(batch, batch_id, config.hash_salt))
         .option("checkpointLocation", config.checkpoint_dir)
         .trigger(processingTime="30 seconds")
         .start()

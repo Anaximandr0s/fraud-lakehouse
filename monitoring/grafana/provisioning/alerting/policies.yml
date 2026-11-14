@@ -1,0 +1,10 @@
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: alert-email
+    group_by: [alertname]
+    # Short wait so a "no input for 5 min" alert still lands within 6 min of the stop.
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 4h

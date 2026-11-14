@@ -9,6 +9,7 @@ ENV = {
     "DATA_FILE": "/data/fraud_all.csv",
     "POSITION_FILE": "/state/position",
     "HEARTBEAT_FILE": "/tmp/heartbeat",
+    "METRICS_PORT": "8000",
 }
 
 
