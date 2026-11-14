@@ -25,6 +25,8 @@ jobs:
         run: make lint
       - id: test
         run: make test | tee pytest.log
+      - id: dbt_parse
+        run: make dbt args=parse
       - name: Job summary
         if: always()
         run: |
@@ -34,6 +36,7 @@ jobs:
             echo "|---|---|"
             echo "| lint | ${{ steps.lint.outcome }} |"
             echo "| test | ${{ steps.test.outcome }} |"
+            echo "| dbt parse | ${{ steps.dbt_parse.outcome }} |"
             if [ -f pytest.log ]; then
               echo
               echo "pytest: $(tail -n 1 pytest.log | tr -d '=' | xargs)"
@@ -65,6 +68,9 @@ jobs:
       - id: producer
         if: always()
         run: docker run --rm -i hadolint/hadolint:v2.15.1 < producer/Dockerfile
+      - id: airflow
+        if: always()
+        run: docker run --rm -i hadolint/hadolint:v2.15.1 < airflow/Dockerfile
       - name: Job summary
         if: always()
         run: |
@@ -74,4 +80,5 @@ jobs:
             echo "|---|---|"
             echo "| hadolint spark/Dockerfile | ${{ steps.spark.outcome }} |"
             echo "| hadolint producer/Dockerfile | ${{ steps.producer.outcome }} |"
+            echo "| hadolint airflow/Dockerfile | ${{ steps.airflow.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"

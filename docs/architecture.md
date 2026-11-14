@@ -103,21 +103,27 @@ lat and merch_lat in [-90, 90], long and merch_long in [-180, 180] (`coordinates
 
 ### gold.* — built by dbt from `stg_transactions` (view over Silver)
 
-| Model | Grain | Notes |
+Fraud metrics, shared by the aggregates (macro `fraud_metrics`): `tx_count`, `fraud_count`,
+`fraud_rate` (a fraction 0–1; Metabase shows it as %), `fraud_amt` (sum of `amt` over frauds).
+
+| Model | Grain | Columns besides the fraud metrics |
 |---|---|---|
 | `fraud_by_category` | category | |
-| `fraud_by_hour_of_day` | 0–23 | |
-| `fraud_by_state` | state | + mean lat/long for the map |
-| `fraud_by_amount_band` | <10, 10–50, 50–100, 100–500, 500–1000, >1000 $ | |
-| `fraud_by_age_band` | 18–25, 26–40, 41–60, >60 | |
-| `merchant_risk` | merchant | min 100 transactions, risk rank |
-| `customer_risk_profile` | card_hash | |
-| `ml_features` | transaction | features + `is_fraud` + `split` (`train` if `trans_ts < TEST_SPLIT_TS`, else `test`); tag `ml` |
+| `fraud_by_hour_of_day` | `hour_of_day` 0–23 | |
+| `fraud_by_state` | state | `lat`, `long` (means, for the map) |
+| `fraud_by_amount_band` | `amount_band` <10, 10–50, 50–100, 100–500, 500–1000, >1000 $ | `band_order` 1–6 for sorting |
+| `fraud_by_age_band` | `age_band` <18, 18–25, 26–40, 41–60, >60 (the data has cardholders from 13) | `band_order` 1–5 |
+| `merchant_risk` | merchant, min 100 transactions | `risk_rank` (by `fraud_rate` desc, then `fraud_count` desc) |
+| `customer_risk_profile` | card_hash | `total_amt`, `first_ts`, `last_ts` |
+| `ml_features` | transaction | see below; tag `ml` |
 
-`ml_features` card-level features use windows over the past only, ordered by `unix_timestamp(trans_ts)`
-(`range between N preceding and 1 preceding`): `card_tx_count_1h`, `card_tx_count_24h`, `card_amt_ratio`,
-`secs_since_last_tx`; plus `log_amt`, `is_night`, `log_city_pop`. It is excluded from `gold_refresh` and built on demand
-with `make ml-features`.
+`ml_features` columns: `trans_num, trans_ts, card_hash, category, gender, age, amt, log_amt, hour_of_day, day_of_week,
+is_night` (22:00–05:59) `, distance_km, log_city_pop, card_tx_count_1h, card_tx_count_24h, card_amt_ratio`
+(`amt` / card's mean `amt` over the previous 24 h, null without history) `, secs_since_last_tx` (null for a card's
+first transaction) `, is_fraud, split` (`train` if `trans_ts < TEST_SPLIT_TS`, else `test`; the dbt var
+`test_split_ts` must equal `TEST_SPLIT_TS`, checked by a unit test). Card-level features use windows over the past
+only, ordered by `unix_timestamp(trans_ts)` (`range between N preceding and 1 preceding`). It is excluded from
+`gold_refresh` and built on demand with `make ml-features`.
 
 Every Gold model has `not_null` / `unique` tests in `schema.yml`. `dbt source freshness` warns (does not fail)
 if Silver has no new row for 5 min.
@@ -133,7 +139,9 @@ Data science writes only to the `sandbox` schema; reads `silver` and `gold`.
 
 Both DAGs only send SQL to spark-thrift; Airflow does not install Spark. Failures email `ALERT_EMAIL`.
 Compaction can conflict with a concurrent streaming `MERGE` commit: the streaming batch fails, the service restarts
-and replays it from its checkpoint, with no loss and no duplicate. This is accepted.
+and replays it from its checkpoint, with no loss and no duplicate. This is accepted. The conflict can also fail the
+maintenance side (seen in step 5: `rewrite_manifests` on Bronze lost to a streaming append), so maintenance tasks
+retry twice after 1 min; the Iceberg procedures are safe to rerun.
 
 ## 6. Serving
 
@@ -197,6 +205,17 @@ Measured in step 4, all core services running (`docker stats`):
 - RATE=500 for 10 min (batches of 15,000 events every 30 s), peak of 28 samples: spark-worker 1759 MiB ·
   spark-streaming 768 MiB · spark-thrift 550 MiB · kafka 527 MiB · hive-metastore 338 MiB · minio 293 MiB ·
   spark-master 269 MiB · postgres 106 MiB · producer 20 MiB. spark-streaming never reached its limit.
+
+Measured in step 5, core + orchestration at RATE=20, 10 min covering `lakehouse_maintenance`, `make ml-features`
+and two `gold_refresh` runs (peak of 27 samples): spark-worker 2665 MiB · airflow 1715 MiB · spark-thrift 995 MiB ·
+spark-streaming 818 MiB · minio 420 MiB · spark-master 268 MiB · kafka 285 MiB · hive-metastore 253 MiB ·
+postgres 152 MiB · producer 14 MiB; sum of peaks 7.6 GiB. spark-thrift first filled its 1 G limit under dbt load
+(1018 MB JVM RSS for a 640m heap); with `MALLOC_ARENA_MAX=2`, as for spark-streaming, it stays just below it.
+
+`gold_refresh` duration: 26–28 s alone (freshness 6 s, run 12 s, test 8 s), 60 s while maintenance and
+`ml_features` run, 72 s for the first run after Airflow starts (full dbt parse); the 8-min task timeout leaves margin.
+`lakehouse_maintenance`: 67 s on a quiet stack; 4 min 12 s under load, including one retry of `maintain_gold`
+(it read `gold.ml_features` while dbt was recreating it).
 
 `make up-all` is for demos only. Daily development runs `core` + one profile.
 

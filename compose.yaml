@@ -177,6 +177,8 @@ services:
     environment:
       <<: *s3-env
       SPARK_NO_DAEMONIZE: "true"
+      # Same glibc arena growth as spark-streaming: under dbt load it filled its 1g limit without it.
+      MALLOC_ARENA_MAX: "2"
     ports:
       - "10000:10000"
       - "4041:4040"
@@ -311,6 +313,47 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
     mem_limit: 128m
+
+  airflow:
+    image: fraud-lakehouse-airflow:local
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+      args:
+        AIRFLOW_IMAGE: ${AIRFLOW_IMAGE:?}
+        UV_IMAGE: ${UV_IMAGE:?}
+    profiles: [orchestration]
+    command: standalone
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?}@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      # Used by SmtpNotifier; STARTTLS on port 587, hence disable_ssl.
+      AIRFLOW_CONN_SMTP_DEFAULT: >-
+        {"conn_type": "smtp", "host": "${SMTP_HOST:?}", "port": ${SMTP_PORT:?},
+        "login": "${SMTP_USER:?}", "password": "${SMTP_PASSWORD:?}",
+        "extra": {"from_email": "${SMTP_USER:?}", "disable_ssl": true}}
+      ALERT_EMAIL: ${ALERT_EMAIL:?}
+      # Links in emails use the host port; tasks still reach the API on the container port.
+      AIRFLOW__API__BASE_URL: http://localhost:8082
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://localhost:8080/execution/
+      DBT_SPARK_HOST: spark-thrift
+    ports:
+      - "8082:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spark-thrift:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 2g
 
 volumes:
   minio-data:
