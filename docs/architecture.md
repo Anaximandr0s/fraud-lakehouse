@@ -28,7 +28,7 @@ Storage: Iceberg tables on MinIO (s3a://lakehouse/warehouse), catalog = Hive Met
 | spark-streaming | same Spark image | long-running job: Kafka → Bronze → Silver in one `foreachBatch` |
 | spark-thrift | same Spark image | JDBC SQL endpoint on port 10000, FAIR scheduler |
 | airflow | built from `apache/airflow` 3, `airflow standalone`, LocalExecutor | DAGs `gold_refresh`, `lakehouse_maintenance`; dbt-spark lives in its own venv (`/opt/dbt-venv`) and is called with `BashOperator`, so its dependencies never conflict with Airflow's |
-| metabase | `metabase/metabase` | dashboards over Silver and Gold (Spark SQL driver → spark-thrift) |
+| metabase | `metabase/metabase` (LTS) | dashboards over Silver and Gold (Spark SQL driver → spark-thrift); app data in Postgres `metabase`; dashboards created by `make metabase-setup` |
 | jupyter | Spark image + JupyterLab | data science on Silver and Gold; same Spark and Python as the cluster |
 | prometheus, grafana, cadvisor | `prom/prometheus`, `grafana/grafana`, `gcr.io/cadvisor/cadvisor` | metrics, dashboards, email alerts |
 
@@ -149,10 +149,28 @@ Metabase, 3 dashboards:
 1. **Live** (refresh 1 min, on Silver, last hour by `event_ts`): transactions, frauds, fraud rate, fraud amount;
    per-minute line; recent frauds table.
 2. **Fraud patterns** (refresh 10 min, on Gold): rate by category, hour, state (map), amount band, age band.
-3. **Risk** (on Gold): top merchants, top cards, number of cards hit.
+3. **Risk** (refresh 10 min, on Gold): top merchants, top cards, number of cards hit.
 
-Optional (step 6): Metabase alert on the last-hour fraud rate. Frauds cluster at night, so the threshold is set
-after measuring the hourly fraud rate on the data, not before.
+The dashboards are code: `src/fraud_lakehouse/dashboards.py` declares them (SQL, chart type, grid position) and
+`make metabase-setup` creates or updates them through the Metabase REST API, found by name, so it is safe to rerun
+(Metabase open source cannot export dashboards to files). `make metabase-check` runs every card once.
+Auto-refresh is not stored by Metabase: it is the `#refresh=` part of the URL, so Live is opened as
+`/dashboard/<id>#refresh=60`, Fraud patterns and Risk with `#refresh=600` (the setup prints the links).
+
+Two Metabase connections to spark-thrift, `Lakehouse silver` (Live) and `Lakehouse gold` (the others): the Spark SQL
+driver syncs only the tables of its connection's database, and has no schema filter. Neither connection ever scans
+column values (`is_full_sync` false), so Metabase sends no `SELECT DISTINCT` over Silver.
+
+Live reads only the last hour of `event_ts`. Silver is written ordered by `event_ts` (`WRITE ORDERED BY`, hash
+distribution, sort compaction), so Iceberg skips older files by their min/max: measured in step 6, the Live query
+reads 3 of 32 data files and runs in about 0.2 s.
+
+Alert on the last-hour fraud rate: not set. Measured in step 6 over the full dataset cut into 72,000-transaction
+windows (one hour of replay at `RATE=20`): min 0.29 %, median 0.50 %, p95 0.84 %, max 0.96 %. One replay hour covers
+about a day of data, so the night clustering averages out and no threshold separates a real anomaly from noise.
+
+After the producer reaches the end of the CSV, Live stays flat: a replay (`make reset-producer`) sends `trans_num`
+values Silver already holds, and the `MERGE` ignores them.
 
 ## 7. Monitoring
 
@@ -186,10 +204,10 @@ SMTP is a Gmail account with an app password. Settings come from `.env`:
 
 ## 9. Resources (memory limits)
 
-core profile ≈ 8.25 GB: spark-worker 3.5 G · spark-thrift 1 G · spark-streaming 1 G · kafka 768 M ·
+core profile ≈ 8.5 GB: spark-worker 3.5 G · spark-thrift 1.25 G · spark-streaming 1 G · kafka 768 M ·
 hive-metastore 640 M · minio 512 M · spark-master 512 M · postgres 384 M · producer 128 M.
-Other profiles: `orchestration` (Airflow 2 G) · `bi` (Metabase 1 G) · `notebook` (Jupyter 1 G) ·
-`monitoring` (< 0.9 G). All profiles ≈ 13.25 GB of limits.
+Other profiles: `orchestration` (Airflow 2 G) · `bi` (Metabase 1.5 G) · `notebook` (Jupyter 1 G) ·
+`monitoring` (< 0.9 G). All profiles ≈ 14 GB of limits.
 
 spark-worker: 3 executors × (640 MB + 384 MB overhead) ≈ 3 GB, plus the worker daemon, fits in 3.5 G.
 Measured in step 2 (`docker stats`, idle right after a Beeline create/insert/select on a 2-row Iceberg table):
@@ -210,12 +228,20 @@ Measured in step 5, core + orchestration at RATE=20, 10 min covering `lakehouse_
 and two `gold_refresh` runs (peak of 27 samples): spark-worker 2665 MiB · airflow 1715 MiB · spark-thrift 995 MiB ·
 spark-streaming 818 MiB · minio 420 MiB · spark-master 268 MiB · kafka 285 MiB · hive-metastore 253 MiB ·
 postgres 152 MiB · producer 14 MiB; sum of peaks 7.6 GiB. spark-thrift first filled its 1 G limit under dbt load
-(1018 MB JVM RSS for a 640m heap); with `MALLOC_ARENA_MAX=2`, as for spark-streaming, it stays just below it.
+(1018 MB JVM RSS for a 640m heap); `MALLOC_ARENA_MAX=2`, as for spark-streaming, was not enough (664 limit hits
+in 23 min, 1044 MB RSS), so its limit went to 1.25 G in step 6.
 
 `gold_refresh` duration: 26–28 s alone (freshness 6 s, run 12 s, test 8 s), 60 s while maintenance and
 `ml_features` run, 72 s for the first run after Airflow starts (full dbt parse); the 8-min task timeout leaves margin.
 `lakehouse_maintenance`: 67 s on a quiet stack; 4 min 12 s under load, including one retry of `maintain_gold`
 (it read `gold.ml_features` while dbt was recreating it).
+
+Measured in step 6, core + bi + orchestration, every dashboard card run once a minute for 10 min (as an open Live
+dashboard would), producer idle at the end of the CSV: spark-worker 1458 MiB · airflow 879 MiB · spark-thrift
+978 MiB (limit 1.25 G, never reached) · spark-streaming 491 MiB · minio 297 MiB · postgres 249 MiB · kafka 236 MiB.
+Metabase with a 512m heap needs about 1.05 GB of process memory (metaspace and compiled code of a large Clojure
+app): at 1 G it hit its limit 5707 times in 10 min; `MALLOC_ARENA_MAX=2` changed nothing (6097), so it was not
+kept; at 1.5 G it settles at 1054 MiB, and its limit hits (927, near startup) stop under steady load.
 
 `make up-all` is for demos only. Daily development runs `core` + one profile.
 

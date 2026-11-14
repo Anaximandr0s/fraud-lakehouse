@@ -27,6 +27,11 @@ DDL = [
         is_fraud INT, ingest_ts TIMESTAMP
     ) USING iceberg PARTITIONED BY (months(trans_ts))
     TBLPROPERTIES ('format-version' = '2', 'write.merge.mode' = 'merge-on-read')""",
+    # Files sorted by event_ts let the Live dashboard's last-hour filter skip most files by min/max.
+    f"ALTER TABLE {SILVER_TABLE} WRITE ORDERED BY event_ts",
+    # A write order alone makes Spark range-shuffle each batch into 200 tiny files; hash keeps
+    # one file per partition per batch, still sorted by event_ts inside.
+    f"ALTER TABLE {SILVER_TABLE} SET TBLPROPERTIES ('write.distribution-mode' = 'hash')",
     f"""CREATE TABLE IF NOT EXISTS {REJECTED_TABLE} (
         raw_value STRING, reason STRING, ingest_ts TIMESTAMP
     ) USING iceberg""",
