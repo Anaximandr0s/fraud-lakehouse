@@ -64,6 +64,7 @@ def test_replay_sends_every_row_then_reports_finished(config, metrics):
     assert json.loads(kafka.sent[0][1])["trans_num"] == "t0"
     assert config.position_file.read_text() == "5"
     assert metrics.rows_sent._value.get() == 5
+    assert metrics.position._value.get() == 5
     assert metrics.finished._value.get() == 1
 
 
@@ -75,6 +76,7 @@ def test_replay_resumes_after_the_saved_position(config, metrics):
 
     assert [k for k, _ in kafka.sent] == [b"card3", b"card4"]
     assert metrics.rows_sent._value.get() == 2
+    assert metrics.position._value.get() == 5
     assert metrics.finished._value.get() == 1
 
 
@@ -85,4 +87,5 @@ def test_a_stop_before_the_end_saves_the_position_and_is_not_finished(config, me
         replay(kafka, config, metrics)
 
     assert config.position_file.read_text() == "2"
+    assert metrics.position._value.get() == 2
     assert metrics.finished._value.get() == 0

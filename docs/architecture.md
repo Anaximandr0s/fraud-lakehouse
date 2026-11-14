@@ -226,13 +226,15 @@ SMTP is a Gmail account with an app password. Settings come from `.env`:
 | Grafana | 3001 |
 | Prometheus | 9090 |
 | Jupyter | 8888 |
+| Producer metrics (127.0.0.1 only) | 8000 |
+| Demo page (`make demo`, a host process on 127.0.0.1) | 8099 |
 
 ## 9. Resources (memory limits)
 
-core profile ≈ 8.5 GB: spark-worker 3.5 G · spark-thrift 1.25 G · spark-streaming 1 G · kafka 768 M ·
+core profile ≈ 8.9 GB: spark-worker 3.5 G · spark-thrift 1.25 G · spark-streaming 1.25 G · kafka 768 M ·
 hive-metastore 640 M · minio 512 M · spark-master 512 M · postgres 384 M · producer 128 M.
 Other profiles: `orchestration` (Airflow 2 G) · `bi` (Metabase 1.5 G) · `notebook` (Jupyter 1.5 G) ·
-`monitoring` (0.86 G). All profiles ≈ 14.5 GB of limits.
+`monitoring` (1.1 G). All profiles ≈ 15 GB of limits; `make up-all` (all but `notebook`) ≈ 13.5 GB.
 
 spark-worker: 3 executors × (640 MB + 384 MB overhead) ≈ 3 GB, plus the worker daemon, fits in 3.5 G.
 Measured in step 2 (`docker stats`, idle right after a Beeline create/insert/select on a 2-row Iceberg table):
@@ -277,6 +279,16 @@ spark-thrift working set before the monitoring profile started: 1065 MiB of 1.25
 Measured in step 8, `make notebook-run` (about 5 min of training on 1.04 M rows, streaming running at RATE=20):
 jupyter (driver 512m, kernel, JupyterLab) hit its 1 G limit 101 times; with `MALLOC_ARENA_MAX=2` no hits but a 95 %
 working set; at 1.5 G it peaks at 74 % (1205 MiB). spark-worker 2648 MiB of 3.5 G; streaming kept its 30 s batches.
+
+Measured in step 9, every profile running for 8 h at RATE=20 (Prometheus, working set / limit):
+- spark-streaming at 1 G: RSS 878 MiB after 1 h, then 960–998 MiB from the second hour on (512m heap fully
+  committed, 179 MB metaspace, 356 threads, `MALLOC_ARENA_MAX=2` already set), above 90 % for 415 min, 137 limit
+  hits; flat, not a leak, so the limit went to 1.25 G (61 % 10 min after a restart).
+- grafana at 512m, after a stop and start from the demo page: 243 MiB of process plus 200 MiB of its own files in
+  active page cache, 89–92 % for 5 min; after a recreate 71–81 %. At 768m, after a stop and start: 65–75 % for
+  6 min, then 53 %.
+- `make recovery-check`: every service healthy 136 s after `down`. From the demo page, Stop all took 29 s and
+  Start all (`make up-all`, image builds from cache and Metabase setup included) 395 s.
 
 `make up-all` is for demos only. Daily development runs `core` + one profile.
 

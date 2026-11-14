@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fraud-lakehouse</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="title">
+      <h1>fraud-lakehouse</h1>
+      <p>Real-time card fraud detection on one laptop: Kafka, Spark Structured Streaming, Iceberg, dbt.</p>
+    </div>
+    <nav class="actions">
+      <button id="containers" class="ghost" title="docker compose ps and docker stats">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7h3v3H2zM5.5 7h3v3h-3zM9 7h3v3H9zM5.5 3.5h3v3h-3zM1 10.5h14c0 2.5-2.5 3.5-6 3.5S1 13 1 10.5z"/></svg>
+        Containers
+      </button>
+      <span class="sep"></span>
+      <button data-action="start-all" class="primary">Start all</button>
+      <button data-action="stop-all" data-confirm="Stop every container? Volumes and data are kept; Start all resumes where it stopped.">Stop all</button>
+      <button data-action="reset" class="danger" data-confirm="Delete every volume: Kafka topic, Iceberg tables, Postgres, checkpoints. This cannot be undone." data-type="reset">Reset</button>
+    </nav>
+  </header>
+
+  <main>
+    <svg id="diagram" viewBox="0 0 1188 740" role="img" aria-label="Pipeline architecture">
+      <defs>
+        <marker id="head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0L8 4L0 8z" class="arrowhead"/>
+        </marker>
+        <marker id="head-live" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0L8 4L0 8z" class="arrowhead live"/>
+        </marker>
+      </defs>
+      <g id="lanes"></g>
+      <g id="edges"></g>
+      <g id="nodes"></g>
+    </svg>
+    <p class="legend">
+      <span><i class="dot running"></i>running</span>
+      <span><i class="dot starting"></i>starting</span>
+      <span><i class="dot stopped"></i>stopped</span>
+      <span><i class="dot failed"></i>unhealthy or failed</span>
+      <span><i class="line live"></i>data moving</span>
+      <span>Click any box for its role, ports and links.</span>
+    </p>
+  </main>
+
+  <aside id="panel" hidden>
+    <button class="close" aria-label="Close">×</button>
+    <div id="panel-info"></div><div id="panel-action"></div>
+  </aside>
+
+  <footer class="statusbar">
+    <div class="producer">
+      <span class="label">Producer</span>
+      <span id="producer-state" class="badge">–</span>
+      <div class="bar"><div id="producer-bar"></div></div>
+      <span id="producer-text" class="mono">–</span>
+      <button id="producer-toggle" class="small">–</button>
+    </div>
+    <div id="streaming-text" class="mono streaming">Streaming –</div>
+  </footer>
+
+  <div id="busy" class="overlay" hidden>
+    <div class="dialog">
+      <div class="busy-head"><span class="spinner"></span><strong id="busy-title"></strong><span id="busy-time" class="mono"></span></div>
+      <pre id="busy-log"></pre>
+      <div class="dialog-actions"><button id="busy-close" hidden>Close</button></div>
+    </div>
+  </div>
+
+  <div id="confirm" class="overlay" hidden>
+    <div class="dialog narrow">
+      <strong id="confirm-title"></strong>
+      <p id="confirm-text"></p>
+      <label id="confirm-type-label" hidden>Type <code>reset</code> to confirm <input id="confirm-type" autocomplete="off"></label>
+      <div class="dialog-actions">
+        <button id="confirm-cancel" class="ghost">Cancel</button>
+        <button id="confirm-ok" class="primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="docker" class="overlay" hidden>
+    <div class="dialog wide">
+      <div class="dialog-head"><strong>Containers</strong><span class="mono muted">docker compose ps · docker stats</span><button class="close" aria-label="Close">×</button></div>
+      <table>
+        <thead><tr><th>Service</th><th>State</th><th>Health</th><th>Image</th><th class="num">Memory</th><th class="num">Mem %</th><th class="num">CPU %</th></tr></thead>
+        <tbody id="docker-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

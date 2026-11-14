@@ -24,6 +24,11 @@ class ReplayMetrics:
         self.rows_sent = Counter(
             "producer_rows_sent", "CSV rows handed to Kafka", registry=registry
         )
+        self.position = Gauge(
+            "producer_position",
+            "CSV rows acknowledged by Kafka, saved for resume",
+            registry=registry,
+        )
         # Lets the "no streaming input" alert stay silent once the whole CSV has been replayed.
         self.finished = Gauge(
             "producer_finished", "1 once the end of the CSV is reached", registry=registry
@@ -45,18 +50,22 @@ def on_delivery(err: Any, _msg: Any) -> None:
         raise RuntimeError(f"Kafka delivery failed: {err}")
 
 
-def checkpoint(producer: Any, config: ProducerConfig, position: int) -> None:
+def checkpoint(
+    producer: Any, config: ProducerConfig, metrics: ReplayMetrics, position: int
+) -> None:
     # Saved only once Kafka has acknowledged every event before it: a crash resends, never skips.
     unsent = producer.flush(10)
     if unsent:
         raise RuntimeError(f"{unsent} events not acknowledged by Kafka")
     save_position(config.position_file, position)
+    metrics.position.set(position)
     config.heartbeat_file.touch()
 
 
 def replay(producer: Any, config: ProducerConfig, metrics: ReplayMetrics) -> None:
     """Sends every row after the saved position; producer is a confluent_kafka.Producer."""
     position = read_position(config.position_file)
+    metrics.position.set(position)
     metrics.finished.set(0)
     log.info("starting at row %d, %s events/s", position, config.rate)
     with config.data_file.open(newline="") as f:
@@ -75,14 +84,14 @@ def replay(producer: Any, config: ProducerConfig, metrics: ReplayMetrics) -> Non
                 position += 1
                 metrics.rows_sent.inc()
                 if time.monotonic() - last_checkpoint >= CHECKPOINT_SECONDS:
-                    checkpoint(producer, config, position)
+                    checkpoint(producer, config, metrics, position)
                     last_checkpoint = time.monotonic()
                 if position % 10_000 == 0:
                     log.info("sent row %d", position)
         except SystemExit:
-            checkpoint(producer, config, position)
+            checkpoint(producer, config, metrics, position)
             raise
         # Not in a finally: after a failed delivery, saving the position would skip that event.
-        checkpoint(producer, config, position)
+        checkpoint(producer, config, metrics, position)
     metrics.finished.set(1)
     log.info("end of file at row %d, idle", position)
