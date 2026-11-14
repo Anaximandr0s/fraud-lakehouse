@@ -128,7 +128,8 @@ only, ordered by `unix_timestamp(trans_ts)` (`range between N preceding and 1 pr
 Every Gold model has `not_null` / `unique` tests in `schema.yml`. `dbt source freshness` warns (does not fail)
 if Silver has no new row for 5 min.
 
-Data science writes only to the `sandbox` schema; reads `silver` and `gold`.
+Data science reads `silver` and `gold` and writes only to a `sandbox` schema, created the first time a notebook
+needs to save something (the step 8 notebook only prints its results, so it does not exist yet).
 
 ## 5. Orchestration
 
@@ -230,8 +231,8 @@ SMTP is a Gmail account with an app password. Settings come from `.env`:
 
 core profile ≈ 8.5 GB: spark-worker 3.5 G · spark-thrift 1.25 G · spark-streaming 1 G · kafka 768 M ·
 hive-metastore 640 M · minio 512 M · spark-master 512 M · postgres 384 M · producer 128 M.
-Other profiles: `orchestration` (Airflow 2 G) · `bi` (Metabase 1.5 G) · `notebook` (Jupyter 1 G) ·
-`monitoring` (0.86 G). All profiles ≈ 14 GB of limits.
+Other profiles: `orchestration` (Airflow 2 G) · `bi` (Metabase 1.5 G) · `notebook` (Jupyter 1.5 G) ·
+`monitoring` (0.86 G). All profiles ≈ 14.5 GB of limits.
 
 spark-worker: 3 executors × (640 MB + 384 MB overhead) ≈ 3 GB, plus the worker daemon, fits in 3.5 G.
 Measured in step 2 (`docker stats`, idle right after a Beeline create/insert/select on a 2-row Iceberg table):
@@ -272,6 +273,10 @@ grafana at 512m: working set at most 61 % (310 MiB, 276 MiB anon). Grafana first
 384m, where its working set (process plus active page cache) stayed above 90 % for 5 min after a restart and fired
 its own memory alert.
 spark-thrift working set before the monitoring profile started: 1065 MiB of 1.25 G (83 %).
+
+Measured in step 8, `make notebook-run` (about 5 min of training on 1.04 M rows, streaming running at RATE=20):
+jupyter (driver 512m, kernel, JupyterLab) hit its 1 G limit 101 times; with `MALLOC_ARENA_MAX=2` no hits but a 95 %
+working set; at 1.5 G it peaks at 74 % (1205 MiB). spark-worker 2648 MiB of 3.5 G; streaming kept its 30 s batches.
 
 `make up-all` is for demos only. Daily development runs `core` + one profile.
 

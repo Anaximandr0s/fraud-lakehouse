@@ -127,8 +127,10 @@ services:
     build:
       context: .
       dockerfile: spark/Dockerfile
+      target: spark
       args:
         SPARK_IMAGE: ${SPARK_IMAGE:?}
+        UV_IMAGE: ${UV_IMAGE:?}
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master
     environment:
       # Daemons default to a 1g heap, above this container's limit.
@@ -473,6 +475,45 @@ services:
     restart: unless-stopped
     # Its working set (process plus active page cache) passed 90 % of 384m after a restart.
     mem_limit: 512m
+
+  jupyter:
+    image: fraud-lakehouse-jupyter:local
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+      target: jupyter
+      args:
+        SPARK_IMAGE: ${SPARK_IMAGE:?}
+        UV_IMAGE: ${UV_IMAGE:?}
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    profiles: [notebook]
+    working_dir: /notebooks
+    command: >-
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
+      --ServerApp.root_dir=/notebooks --IdentityProvider.token=${JUPYTER_TOKEN:?}
+    environment:
+      <<: *s3-env
+      # The notebook's Spark driver runs here: same glibc arena growth as spark-streaming.
+      MALLOC_ARENA_MAX: "2"
+    volumes:
+      - ./notebooks:/notebooks
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8888/api"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    depends_on:
+      spark-worker:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+    restart: unless-stopped
+    # Training measured a 95 % working set of 1g even with MALLOC_ARENA_MAX=2 (driver, kernel, Jupyter).
+    mem_limit: 1536m
 
 volumes:
   minio-data:
