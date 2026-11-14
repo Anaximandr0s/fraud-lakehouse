@@ -59,6 +59,9 @@ class Live:
         self.finished = False
         self.producer_rate = 0.0
         self.last_sent: tuple[float, float] | None = None
+        self.tables: list[dict] = []
+        self.databases: list[dict] = []
+        self.dashboards: list[dict] = []
         self.job: dict = {"running": False, "log": []}
         self.job_log: deque[str] = deque(maxlen=200)
 
@@ -78,8 +81,12 @@ class Live:
                     "finished": self.finished,
                     "rate": round(self.producer_rate, 1),
                     "known": known,
+                    "silver_complete": demo.silver_complete(self.tables, self.total_rows),
                     **progress,
                 },
+                "tables": self.tables,
+                "databases": self.databases,
+                "dashboards": self.dashboards,
                 "job": {**self.job, "log": list(self.job_log)[-12:]},
             }
 
@@ -135,6 +142,18 @@ class Live:
                 log.warning("stats refresh failed, retrying: %s", error)
             time.sleep(4)
 
+    def poll_postgres(self) -> None:
+        while True:
+            try:
+                tables = demo.parse_tables(psql("metastore", demo.TABLES_SQL))
+                databases = demo.parse_databases(psql("postgres", demo.DATABASES_SQL))
+                dashboards = demo.dashboard_links(psql("metabase", demo.DASHBOARDS_SQL))
+                with self.lock:
+                    self.tables, self.databases, self.dashboards = tables, databases, dashboards
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                log.warning("postgres refresh failed, retrying: %s", error)
+            time.sleep(15)
+
     def start_job(self, action: str, key: str | None) -> bool:
         commands = demo.commands(action, key)
         with self.lock:
@@ -181,6 +200,12 @@ class Live:
             self.job_log.append(f"exit code {process.returncode}")
             return False
         return True
+
+
+def psql(database: str, query: str) -> str:
+    """Read-only query through the container's socket: no password leaves .env."""
+    args = ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres"]
+    return run([*args, "-d", database, "-At", "-F|", "-c", query])
 
 
 def read_saved_position() -> int | None:
@@ -250,6 +275,7 @@ def main() -> None:
     live = Live(count_rows(ROOT / "data" / "fraud_all.csv"))
     threading.Thread(target=live.poll_fast, daemon=True).start()
     threading.Thread(target=live.poll_stats, daemon=True).start()
+    threading.Thread(target=live.poll_postgres, daemon=True).start()
     Handler.live = live
     handler = partial(Handler, directory=str(ROOT / "demo"))
     server = ThreadingHTTPServer(("127.0.0.1", PORT), handler)

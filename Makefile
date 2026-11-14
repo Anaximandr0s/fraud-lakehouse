@@ -2,7 +2,7 @@
 # A provenance attestation carries a timestamp: every build would get a new image ID, and
 # docker compose up would recreate every container even when nothing changed.
 export BUILDX_NO_DEFAULT_ATTESTATIONS := 1
-.PHONY: help lint test jars data build up-core down logs beeline reset-producer silver-count reset-streaming dbt ml-features up-orchestration airflow-password dag-check up-bi metabase-setup metabase-check up-monitoring monitoring-check up-notebook notebook-run up-all demo recovery-check
+.PHONY: help lint test jars data build up-core down logs beeline reset-producer silver-count reset-streaming dbt ml-features up-orchestration airflow-password dag-check up-bi metabase-setup metabase-check up-monitoring monitoring-check up-notebook notebook-run up-all demo recovery-check psql
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -87,6 +87,9 @@ logs: ## Follow one service's logs: make logs s=minio
 
 beeline: ## SQL shell on the Spark Thrift Server
 	docker compose run --rm --no-deps spark-thrift /opt/spark/bin/beeline -u jdbc:hive2://spark-thrift:10000
+
+psql: ## SQL shell on PostgreSQL: db=metastore, airflow or metabase
+	docker compose exec postgres psql -U postgres -d $(or $(db),postgres)
 
 silver-count: ## Row counts of Bronze and Silver, and Silver duplicates (should be 0)
 	docker compose run --rm --no-deps -T spark-thrift /opt/spark/bin/beeline --silent=true \
