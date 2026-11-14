@@ -1,0 +1,13 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: alert-email
+    receivers:
+      - uid: alert-email
+        type: email
+        settings:
+          addresses: ${ALERT_EMAIL}
+          singleEmail: true
+          subject: '{{ template "email.subject" . }}'
+          message: '{{ template "email.message" . }}'

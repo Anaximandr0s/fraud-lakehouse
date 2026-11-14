@@ -1,0 +1,26 @@
+apiVersion: 1
+
+templates:
+  - orgId: 1
+    name: email
+    template: |
+      {{ define "email.subject" -}}
+      [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}
+      {{- with .CommonLabels.container_label_com_docker_compose_service }} — {{ . }}{{ end }}
+      {{- with .CommonLabels.job }} — {{ . }}{{ end }}
+      {{- end }}
+
+      {{ define "email.message" -}}
+      {{ range .Alerts -}}
+      {{ if eq .Status "firing" }}FIRING{{ else }}RESOLVED{{ end }}: {{ .Annotations.summary }}
+      Started:   {{ .StartsAt.UTC.Format "2006-01-02 15:04:05" }} UTC
+      {{- if eq .Status "resolved" }}
+      Resolved:  {{ .EndsAt.UTC.Format "2006-01-02 15:04:05" }} UTC
+      {{- end }}
+      What to do: {{ .Annotations.description }}
+      Dashboard: http://localhost:3001/d/pipeline
+      Rule:      {{ .GeneratorURL }}
+
+      {{ end -}}
+      fraud-lakehouse monitoring (Grafana). Thresholds: docs/architecture.md §7.
+      {{- end }}

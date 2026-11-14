@@ -1,0 +1,167 @@
+apiVersion: 1
+
+# Each rule: query A (one series per thing at risk) → threshold C.
+groups:
+  - orgId: 1
+    name: pipeline
+    folder: fraud-lakehouse
+    interval: 30s
+    rules:
+      - uid: target-down
+        title: Target down
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "{{ $labels.job }} has not answered Prometheus for 1 min"
+          description: "Check the container: docker compose ps; make logs s={{ $labels.job }}"
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model: {refId: A, instant: true, expr: "1 - up"}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+
+      - uid: streaming-behind
+        title: Streaming falls behind
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "Spark processes fewer rows per second than arrive from Kafka"
+          description: "Lag grows: check batch duration and spark-worker memory on the pipeline dashboard."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                metrics_spark_streaming_driver_spark_streaming_transactions_inputRate_total_Value
+                - metrics_spark_streaming_driver_spark_streaming_transactions_processingRate_total_Value
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+
+      - uid: streaming-slow-batch
+        title: Streaming batch over 30 s
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "Streaming batches take {{ humanize $values.A.Value }} s, longer than the 30 s trigger"
+          description: "Batches pile up: check spark-thrift and maintenance jobs competing for the 6 cores."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: metrics_spark_streaming_driver_spark_streaming_transactions_latency_Value / 1000
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions: [{evaluator: {type: gt, params: [30]}}]
+
+      - uid: streaming-no-input
+        title: No streaming input
+        condition: C
+        # Plus up to 30 s for Spark's next empty batch, 15 s of scrape and 30 s of evaluation:
+        # about 5 min after the input stops.
+        for: 4m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "No row reached spark-streaming for about 5 min, and the producer has not finished the CSV"
+          description: "Check the producer (make logs s=producer) and Kafka (docker compose ps kafka)."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # Silent once the producer reports the whole CSV sent; fires if the producer is gone.
+              expr: >-
+                (metrics_spark_streaming_driver_spark_streaming_transactions_inputRate_total_Value == bool 0)
+                unless on() (producer_finished == 1)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+
+      - uid: container-memory
+        title: Container memory over 90 % of its limit
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "{{ $labels.container_label_com_docker_compose_service }} uses {{ humanizePercentage $values.A.Value }} of its memory limit"
+          description: "Near the limit the kernel reclaims or kills: see docs/architecture.md §9 before raising a limit."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # Working set, not usage: usage counts page cache the kernel can drop.
+              expr: >-
+                max by (container_label_com_docker_compose_service) (
+                  container_memory_working_set_bytes{container_label_com_docker_compose_project="fraud-lakehouse"}
+                  / (container_spec_memory_limit_bytes{container_label_com_docker_compose_project="fraud-lakehouse"} > 0)
+                )
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions: [{evaluator: {type: gt, params: [0.9]}}]
+
+      - uid: minio-disk
+        title: MinIO free disk under 10 %
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "MinIO has {{ humanizePercentage $values.A.Value }} of its disk free"
+          description: "Run lakehouse_maintenance (expires snapshots, removes orphan files) or free disk space."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: minio_cluster_capacity_usable_free_bytes / minio_cluster_capacity_usable_total_bytes
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions: [{evaluator: {type: lt, params: [0.1]}}]

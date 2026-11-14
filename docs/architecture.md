@@ -174,14 +174,38 @@ values Silver already holds, and the `MERGE` ignores them.
 
 ## 7. Monitoring
 
-Prometheus scrapes every 15 s: cAdvisor (containers), Spark native Prometheus endpoint +
-`spark.sql.streaming.metricsEnabled`, MinIO `/minio/v2/metrics/cluster`.
+Prometheus scrapes every 15 s (`monitoring/prometheus.yml`, profile `monitoring`, http://localhost:9090):
+- cAdvisor: memory and CPU per container. Queries filter on the Compose project label, so other projects on the
+  same Docker host are ignored.
+- spark-streaming: Spark's native endpoint `/metrics/prometheus` on the driver UI, with
+  `spark.sql.streaming.metricsEnabled` and `spark.metrics.namespace=${spark.app.name}`, so metric names
+  (`metrics_spark_streaming_driver_spark_streaming_transactions_inputRate_total_Value`, `…processingRate…`,
+  `…latency…`) do not change when the app restarts.
+- producer: `producer_rows_sent_total` and `producer_finished` (1 once the whole CSV is sent), port 8000.
+- MinIO: `/minio/v2/metrics/cluster`, without a token (`MINIO_PROMETHEUS_AUTH_TYPE=public`).
+
 Spark does not commit offsets to Kafka, so Kafka lag is not measured: lag = Spark processed rate vs input rate,
 plus table freshness.
 
-Grafana alerts (email): target down 1 min · processed < input rate 5 min · batch > 30 s for 5 min ·
-no streaming input (`inputRowsPerSecond` = 0) 5 min · container RAM > 90 % of limit 5 min · MinIO free disk < 10 %.
-Grafana dashboards and alerts are provisioned from files.
+Grafana (http://localhost:3001, user `admin`) provisions everything from `monitoring/grafana/`: the Prometheus
+data source, the Pipeline dashboard and six email alerts (rules evaluated every 30 s, first email 10 s after a rule
+fires, repeated every 4 h while it lasts):
+
+| Alert | Fires when | For |
+|---|---|---|
+| Target down | a scrape target does not answer | 1 min |
+| Streaming falls behind | processed rows/s < input rows/s | 5 min |
+| Streaming batch over 30 s | batch duration > the 30 s trigger | 5 min |
+| No streaming input | input rate = 0 **and** the producer has not reported `producer_finished = 1` | 4 min |
+| Container memory over 90 % of its limit | working set / limit (not usage, which counts page cache) | 5 min |
+| MinIO free disk under 10 % | usable free / usable total | 5 min |
+
+"No streaming input" waits 4 min: with Spark's next empty batch (≤ 30 s), the scrape and the evaluation, the email
+leaves about 5 min after the input stops. It stays silent once the producer has replayed the whole CSV, and fires
+if the producer is gone. Measured in step 7 with `docker compose stop producer`: Target down sent 1 min 28 s after
+the stop, No streaming input 5 min 25 s after.
+Spark's input rate is what it reads, capped by `MAX_OFFSETS_PER_TRIGGER` per 30 s (about 1,666 rows/s): a producer
+faster than that would grow Kafka lag without firing "Streaming falls behind". At `RATE` 20 or 500 it cannot happen.
 
 Email paths: Grafana (infrastructure) and Airflow (DAG failures); Metabase only if its optional alert is enabled.
 SMTP is a Gmail account with an app password. Settings come from `.env`:
@@ -207,7 +231,7 @@ SMTP is a Gmail account with an app password. Settings come from `.env`:
 core profile ≈ 8.5 GB: spark-worker 3.5 G · spark-thrift 1.25 G · spark-streaming 1 G · kafka 768 M ·
 hive-metastore 640 M · minio 512 M · spark-master 512 M · postgres 384 M · producer 128 M.
 Other profiles: `orchestration` (Airflow 2 G) · `bi` (Metabase 1.5 G) · `notebook` (Jupyter 1 G) ·
-`monitoring` (< 0.9 G). All profiles ≈ 14 GB of limits.
+`monitoring` (0.86 G). All profiles ≈ 14 GB of limits.
 
 spark-worker: 3 executors × (640 MB + 384 MB overhead) ≈ 3 GB, plus the worker daemon, fits in 3.5 G.
 Measured in step 2 (`docker stats`, idle right after a Beeline create/insert/select on a 2-row Iceberg table):
@@ -242,6 +266,12 @@ dashboard would), producer idle at the end of the CSV: spark-worker 1458 MiB · 
 Metabase with a 512m heap needs about 1.05 GB of process memory (metaspace and compiled code of a large Clojure
 app): at 1 G it hit its limit 5707 times in 10 min; `MALLOC_ARENA_MAX=2` changed nothing (6097), so it was not
 kept; at 1.5 G it settles at 1054 MiB, and its limit hits (927, near startup) stop under steady load.
+
+Measured in step 7, monitoring profile (limits 864 MB): prometheus 117 MiB of 256m, cadvisor 34 MiB of 96m,
+grafana at 512m: working set at most 61 % (310 MiB, 276 MiB anon). Grafana first had 256m (7831 limit hits), then
+384m, where its working set (process plus active page cache) stayed above 90 % for 5 min after a restart and fired
+its own memory alert.
+spark-thrift working set before the monitoring profile started: 1065 MiB of 1.25 G (83 %).
 
 `make up-all` is for demos only. Daily development runs `core` + one profile.
 
