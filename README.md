@@ -6,13 +6,40 @@ builds Gold tables for dashboards and data science. Built as a learning project,
 
 ## Run
 
-Requires [uv](https://docs.astral.sh/uv/), GNU Make and Docker Compose.
+Requires [uv](https://docs.astral.sh/uv/), GNU Make and Docker Compose (about 14 GB of RAM for everything).
 
 ```
 cp .env.example .env   # then replace the change-me passwords
-make up-core           # downloads jars and the Kaggle dataset, builds the images, starts the core services
-make help
+make up-all            # downloads jars and the dataset, builds the images, starts every service but Jupyter
+make demo              # control page on http://localhost:8099
 ```
+
+### Demo page
+
+`make demo` serves a page on http://localhost:8099 that draws the pipeline with each service's live state, memory and
+links. It runs on the host, not in a container ([ADR 0009](docs/adr/0009-demo-page-on-the-host.md)), and listens on
+127.0.0.1 only. From it:
+
+- **Start all** runs `make up-all`; **Stop all** runs `make down` (volumes kept); **Reset** deletes every volume
+  (asks you to type `reset`). While one runs, the page is locked and shows its output.
+- Click a box for its role, ports, image and links (MinIO folders of Bronze, Silver and Gold, Spark UIs, Airflow,
+  Metabase, Grafana, Prometheus, JupyterLab). Producer, Airflow, Metabase, JupyterLab, Prometheus, Grafana and
+  cAdvisor have a Stop / Start button: ingestion (Kafka to Silver) never waits on them; with Airflow stopped, Gold
+  stops refreshing. Kafka, Spark, MinIO, the metastore and Postgres have none. Start stays disabled while the core
+  services are down: press Start all first.
+- **Containers** shows `docker compose ps` and `docker stats`. The bottom bar shows the producer's position in the
+  CSV, its rate and time left, with Pause / Resume, and Spark's input and processing rates.
+
+Stopping and resuming: **Stop all** (or `make down`) stops every container and keeps all data. Next time, run
+`make demo` in a terminal, open http://localhost:8099 and press **Start all**: the producer continues from its saved
+row and Spark from its checkpoint. If the terminal running `make demo` is still open, just press **Start all**.
+`Ctrl+C` in that terminal closes the page, not the services.
+
+With monitoring on, pausing the producer sends "Target down" after 1 min and "No streaming input" after about 5 min;
+stopping cAdvisor sends "Target down"; stopping Prometheus makes every Grafana rule report an error by email.
+`Ctrl+C` during an action leaves that action running to its end.
+
+### Commands
 
 UIs: MinIO console http://localhost:9001 (login from `.env`), Spark master http://localhost:8080,
 Spark Thrift Server http://localhost:4041, spark-streaming http://localhost:4040. `make beeline` opens a SQL shell on
@@ -56,8 +83,9 @@ See [docs/architecture.md](docs/architecture.md): data flow, components, tables 
 ## Tests
 
 `make lint test` runs ruff and pytest (Silver transforms on a local SparkSession; needs Java 17+). Data tests:
-`make dbt args="test"`. CI (`.github/workflows/ci.yml`) runs the same on every push and pull request,
-runs `dbt parse`, validates `compose.yaml` and lints the Dockerfiles with hadolint.
+`make dbt args="test"`. Restart without loss: `make recovery-check` (see Limits). CI (`.github/workflows/ci.yml`)
+runs lint and tests on every push and pull request, runs `dbt parse`, validates `compose.yaml` and lints the
+Dockerfiles with hadolint.
 
 ## Results
 
@@ -79,8 +107,14 @@ precision-recall curve (`numBins=0`), not scikit-learn's average precision. Meas
 
 ## Limits
 
-Build step 8 (of steps 0–9): ingestion, streaming into Bronze and Silver, dbt Gold tables, Airflow, Metabase
-dashboards, monitoring with email alerts, and a fraud model notebook. Live stays flat once the producer has replayed the whole CSV.
+Every long-running service has a healthcheck, `restart: unless-stopped` and a memory limit (the one-shot init jobs
+run once and exit). `make recovery-check` stops every running container (volumes kept), starts them again and
+checks that no table shrank, that every Silver row of the snapshot taken before is still there, that Kafka offsets
+read after the restart have no gap, that Silver has no duplicate `trans_num`, and that streaming resumed (Bronze
+grows while the producer sends). Bronze and the rejected table are append only, so a batch replayed after a crash
+can appear twice there; Silver's `MERGE` keeps it once.
+Live stays flat once the producer has replayed the whole CSV: a replay sends `trans_num` values Silver already has.
+The demo page has no login: anyone with a shell on the laptop can use it, as with `docker` itself.
 MinIO serves its metrics without a token (`MINIO_PROMETHEUS_AUTH_TYPE=public`): fine on a laptop where MinIO is
 only reachable locally, not on a shared network. Airflow is pinned to 3.3, the last line on Python 3.10 ([ADR 0005](docs/adr/0005-airflow-standalone.md)).
 Hive Metastore is pinned to 3.1.3, the newest version Spark 3.5 can talk to ([ADR 0001](docs/adr/0001-iceberg-catalog.md)).

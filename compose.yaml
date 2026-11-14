@@ -236,8 +236,8 @@ services:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
-    # A 512m driver heap measured 742 MB of JVM RSS, so 768m left no room.
-    mem_limit: 1g
+    # After 8 h the driver settles at 960 MB of RSS: 512m heap, 179 MB metaspace, 356 threads.
+    mem_limit: 1280m
 
   kafka:
     image: ${KAFKA_IMAGE:?}
@@ -310,6 +310,8 @@ services:
         bind:
           create_host_path: false
       - producer-state:/state
+    ports:
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD-SHELL", "test -n \"$$(find /tmp/heartbeat -mmin -1)\""]
       interval: 15s
@@ -473,8 +475,8 @@ services:
       prometheus:
         condition: service_healthy
     restart: unless-stopped
-    # Its working set (process plus active page cache) passed 90 % of 384m after a restart.
-    mem_limit: 512m
+    # After a stop and start, 243 MB of process plus 200 MB of its own files in active page cache.
+    mem_limit: 768m
 
   jupyter:
     image: fraud-lakehouse-jupyter:local
