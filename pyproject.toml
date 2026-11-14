@@ -28,12 +28,19 @@ dbt = [
     "dbt-spark[pyhive]==1.11.0",
 ]
 dev = [
+    "numpy==2.2.6",
+    "pandas==2.3.3",
     "pre-commit>=4.6.2",
     "prometheus-client>=0.26.0",
     "pyspark==3.5.9",
     "pytest>=9.2.0",
     "pyyaml>=6.0.3",
     "ruff>=0.17.5",
+]
+notebook = [
+    "jupyterlab==4.6.6",
+    "numpy==2.2.6",
+    "pandas==2.3.3",
 ]
 producer = [
     "confluent-kafka>=2.16.1",

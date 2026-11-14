@@ -18,7 +18,9 @@ windowed as (
         avg(amt) over (
             partition by card_hash order by ts_seconds range between 86400 preceding and 1 preceding
         ) as card_avg_amt_24h,
-        ts_seconds - lag(ts_seconds) over (partition by card_hash order by ts_seconds) as secs_since_last_tx
+        ts_seconds - lag(ts_seconds) over (
+            partition by card_hash order by ts_seconds, trans_num
+        ) as secs_since_last_tx
     from tx
 )
 
