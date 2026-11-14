@@ -2,11 +2,6 @@ name: fraud-lakehouse
 
 x-spark: &spark
   image: fraud-lakehouse-spark:local
-  build:
-    context: .
-    dockerfile: spark/Dockerfile
-    args:
-      SPARK_IMAGE: ${SPARK_IMAGE:?}
   restart: unless-stopped
 
 x-s3-env: &s3-env
@@ -125,6 +120,13 @@ services:
 
   spark-master:
     <<: *spark
+    # Only this service builds the shared image: parallel builds of one tag by several services
+    # race, and each stamps its own service label, so the image ID would change on every build.
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+      args:
+        SPARK_IMAGE: ${SPARK_IMAGE:?}
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master
     environment:
       # Daemons default to a 1g heap, above this container's limit.
@@ -193,7 +195,8 @@ services:
         condition: service_healthy
       hive-metastore:
         condition: service_healthy
-    mem_limit: 1g
+    # A 640m driver heap measured 1044 MB of RSS even with MALLOC_ARENA_MAX=2.
+    mem_limit: 1280m
 
   spark-streaming:
     <<: *spark
@@ -354,6 +357,38 @@ services:
         condition: service_healthy
     restart: unless-stopped
     mem_limit: 2g
+
+  metabase:
+    image: ${METABASE_IMAGE:?}
+    profiles: [bi]
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: postgres
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${METABASE_DB_PASSWORD:?}
+      MB_REPORT_TIMEZONE: UTC
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_CHECK_FOR_UPDATES: "false"
+      MB_LOAD_SAMPLE_CONTENT: "false"
+      JAVA_OPTS: -Xmx512m
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spark-thrift:
+        condition: service_healthy
+    restart: unless-stopped
+    # A 512m heap measured about 1 GB of RSS (metaspace, compiled code); 1g was hit thousands of times.
+    mem_limit: 1536m
 
 volumes:
   minio-data:
