@@ -23,12 +23,20 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 
 [dependency-groups]
+dbt = [
+    "dbt-core==1.12.7",
+    "dbt-spark[pyhive]==1.11.0",
+]
 dev = [
     "pre-commit>=4.6.2",
     "pyspark==3.5.9",
     "pytest>=9.2.0",
+    "pyyaml>=6.0.3",
     "ruff>=0.17.5",
 ]
 producer = [
     "confluent-kafka>=2.16.1",
 ]
+
+[tool.uv]
+default-groups = ["dev", "dbt"]

@@ -3,6 +3,11 @@
 !jars/spark/
 !spark/conf/
 !spark/jobs/
+!airflow/dags/
+!dbt/
+dbt/target/
+dbt/logs/
+dbt/.user.yml
 !producer/
 !src/
 !pyproject.toml

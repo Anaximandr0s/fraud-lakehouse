@@ -1,0 +1,23 @@
+name: fraud_lakehouse
+version: "1.0.0"
+profile: fraud_lakehouse
+
+flags:
+  send_anonymous_usage_stats: false
+
+model-paths: [models]
+macro-paths: [macros]
+
+vars:
+  # Must equal TEST_SPLIT_TS in src/fraud_lakehouse/schemas.py (checked by tests/test_dbt_project.py).
+  test_split_ts: "2020-06-21 12:14:25"
+
+models:
+  fraud_lakehouse:
+    +file_format: iceberg
+    staging:
+      +schema: staging
+      +materialized: view
+    gold:
+      +schema: gold
+      +materialized: table

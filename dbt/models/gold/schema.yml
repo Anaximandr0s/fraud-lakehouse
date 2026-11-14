@@ -1,0 +1,63 @@
+version: 2
+
+models:
+  - name: fraud_by_category
+    columns:
+      - name: category
+        data_tests: [not_null, unique]
+      - name: fraud_rate
+        data_tests: [not_null]
+
+  - name: fraud_by_hour_of_day
+    columns:
+      - name: hour_of_day
+        data_tests: [not_null, unique]
+      - name: fraud_rate
+        data_tests: [not_null]
+
+  - name: fraud_by_state
+    columns:
+      - name: state
+        data_tests: [not_null, unique]
+      - name: fraud_rate
+        data_tests: [not_null]
+
+  - name: fraud_by_amount_band
+    columns:
+      - name: amount_band
+        data_tests: [not_null, unique]
+      - name: fraud_rate
+        data_tests: [not_null]
+
+  - name: fraud_by_age_band
+    columns:
+      - name: age_band
+        data_tests: [not_null, unique]
+      - name: fraud_rate
+        data_tests: [not_null]
+
+  - name: merchant_risk
+    columns:
+      - name: merchant
+        data_tests: [not_null, unique]
+      - name: risk_rank
+        data_tests: [not_null]
+
+  - name: customer_risk_profile
+    columns:
+      - name: card_hash
+        data_tests: [not_null, unique]
+      - name: fraud_rate
+        data_tests: [not_null]
+
+  - name: ml_features
+    columns:
+      - name: trans_num
+        data_tests: [not_null, unique]
+      - name: is_fraud
+        data_tests: [not_null]
+      - name: split
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [train, test]

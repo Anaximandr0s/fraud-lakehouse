@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: silver
+    schema: silver
+    tables:
+      - name: transactions
+        config:
+          loaded_at_field: ingest_ts
+          freshness:
+            warn_after: {count: 5, period: minute}
