@@ -1,4 +1,7 @@
 .DEFAULT_GOAL := help
+# A provenance attestation carries a timestamp: every build would get a new image ID, and
+# docker compose up would recreate every container even when nothing changed.
+export BUILDX_NO_DEFAULT_ATTESTATIONS := 1
 .PHONY: help lint test jars data build up-core down logs beeline reset-producer silver-count reset-streaming dbt ml-features up-orchestration airflow-password dag-check
 
 help: ## List targets

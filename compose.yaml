@@ -2,11 +2,6 @@ name: fraud-lakehouse
 
 x-spark: &spark
   image: fraud-lakehouse-spark:local
-  build:
-    context: .
-    dockerfile: spark/Dockerfile
-    args:
-      SPARK_IMAGE: ${SPARK_IMAGE:?}
   restart: unless-stopped
 
 x-s3-env: &s3-env
@@ -125,6 +120,13 @@ services:
 
   spark-master:
     <<: *spark
+    # Only this service builds the shared image: parallel builds of one tag by several services
+    # race, and each stamps its own service label, so the image ID would change on every build.
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+      args:
+        SPARK_IMAGE: ${SPARK_IMAGE:?}
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master
     environment:
       # Daemons default to a 1g heap, above this container's limit.
