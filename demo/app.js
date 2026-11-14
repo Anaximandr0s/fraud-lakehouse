@@ -1,56 +1,50 @@
 "use strict";
 
 const SVG = "http://www.w3.org/2000/svg";
-const H = 64;
+const H = 56;
 
-// x, y, width of each box in the 1188 × 740 diagram.
+// x, y, width of each card in the 1352 × 590 diagram; rows are centred on y 178, 268, 358.
 const LAYOUT = {
-  csv: [24, 96, 150], producer: [214, 96, 150], kafka: [214, 206, 150],
-  "spark-streaming": [404, 206, 170], dbt: [404, 316, 170], airflow: [404, 426, 170],
-  bronze: [614, 96, 170], silver: [614, 206, 170], gold: [614, 316, 170],
-  "spark-thrift": [824, 206, 150], metabase: [1014, 206, 150], jupyter: [1014, 316, 150],
-  "spark-master": [214, 560, 150], "spark-worker": [404, 560, 170], minio: [614, 560, 170],
-  "hive-metastore": [824, 560, 150], postgres: [1014, 560, 150],
-  cadvisor: [214, 664, 150], prometheus: [404, 664, 170], grafana: [614, 664, 170],
+  csv: [32, 150, 148], producer: [208, 150, 148], kafka: [384, 150, 148],
+  "spark-streaming": [580, 150, 160], airflow: [580, 240, 160], dbt: [580, 330, 160],
+  bronze: [788, 150, 160], silver: [788, 240, 160], gold: [788, 330, 160],
+  "spark-thrift": [996, 240, 160],
+  metabase: [1184, 150, 140], beeline: [1184, 240, 140], jupyter: [1184, 330, 140],
+  "spark-master": [376, 462, 156], "spark-worker": [580, 462, 160], minio: [788, 462, 160],
+  "hive-metastore": [996, 462, 160], postgres: [1184, 462, 140],
+  cadvisor: [384, 582, 148], prometheus: [580, 582, 160], grafana: [788, 582, 160],
 };
 
-const LANES = [
-  [24, 150, "Source"], [214, 150, "Ingestion"], [404, 170, "Processing"],
-  [614, 170, "Lakehouse"], [824, 150, "Query"], [1014, 150, "Consumers"],
+// x, width, number, title, caption
+const STAGES = [
+  [16, 532, 1, "Ingest", "the CSV replayed as live events"],
+  [564, 192, 2, "Process", "stream, then batch"],
+  [772, 192, 3, "Store", "Iceberg tables on MinIO"],
+  [980, 356, 4, "Serve", "SQL, dashboards, notebooks"],
 ];
 
-const ICONS = {
-  file: "M3 1.5h6.5L13 5v9.5H3z M9.5 1.5V5H13",
-  send: "M2 8h9 M8 4.5L11.5 8 8 11.5 M13.5 3v10",
-  log: "M2 3.5h12 M2 6.5h12 M2 9.5h12 M2 12.5h8",
-  stream: "M1.5 5c2-2 4 2 6.5 0s4.5 2 6.5 0 M1.5 11c2-2 4 2 6.5 0s4.5 2 6.5 0",
-  server: "M2 2.5h12v4H2z M2 9.5h12v4H2z M4.5 4.5h1 M4.5 11.5h1",
-  table: "M2 2.5h12v11H2z M2 6h12 M2 9.5h12 M6.5 6v7.5",
-  bucket: "M2.5 4h11l-1.3 9.5H3.8z M2.5 4c0-1.2 11-1.2 11 0",
-  db: "M3 3.5c0-1.5 10-1.5 10 0v9c0 1.5-10 1.5-10 0z M3 3.5c0 1.5 10 1.5 10 0 M3 8c0 1.5 10 1.5 10 0",
-  dag: "M2 3h4v3H2z M10 3h4v3h-4z M6 10h4v3H6z M4 6v2h8V6 M8 8v2",
-  sql: "M5 3L1.5 8 5 13 M11 3l3.5 5-3.5 5 M9.5 2.5l-3 11",
-  chart: "M2 13.5h12 M4 11V7 M7 11V4 M10 11V8 M13 11V5.5",
-  notebook: "M3.5 1.5h9v13h-9z M6 5h4.5 M6 7.5h4.5",
-  gauge: "M2 11a6 6 0 0 1 12 0 M8 11l3-4",
-  panel: "M2 2.5h12v11H2z M2 6.5h12 M7 6.5v7",
-  box: "M2 4.5l6-3 6 3v7l-6 3-6-3z M2 4.5l6 3 6-3 M8 7.5v7",
+const STAGE_TITLE = {
+  ingest: "1 · Ingest", process: "2 · Process", store: "3 · Store", serve: "4 · Serve",
+  platform: "Platform", observability: "Observability",
 };
 
-const ICON_OF = {
-  csv: "file", producer: "send", kafka: "log", "spark-streaming": "stream", dbt: "sql",
-  airflow: "dag", bronze: "table", silver: "table", gold: "table", "spark-thrift": "server",
-  metabase: "chart", jupyter: "notebook", "spark-master": "server", "spark-worker": "server",
-  minio: "bucket", "hive-metastore": "db", postgres: "db", cadvisor: "box",
-  prometheus: "gauge", grafana: "panel",
+const LOGO = {
+  producer: "python", kafka: "kafka", "spark-streaming": "spark", airflow: "airflow", dbt: "dbt",
+  "spark-thrift": "spark", metabase: "metabase", jupyter: "jupyter", "spark-master": "spark",
+  "spark-worker": "spark", minio: "minio", "hive-metastore": "hive", postgres: "postgresql",
+  prometheus: "prometheus", grafana: "grafana",
+};
+
+// Drawn for what has no logo of its own, on a 16 × 16 grid.
+const TABLE_GLYPH = "M2 2.5h12v11H2z M2 6h12 M2 9.5h12 M6.5 6v7.5";
+const GLYPH = {
+  csv: "M3 1.5h6.5L13 5v9.5H3z M9.5 1.5V5H13 M5.5 8.5h5 M5.5 11h5",
+  bronze: TABLE_GLYPH, silver: TABLE_GLYPH, gold: TABLE_GLYPH,
+  beeline: "M1.5 2.5h13v11h-13z M4 6l2.5 2L4 10 M8 10.5h4",
+  cadvisor: "M2 4.5l6-3 6 3v7l-6 3-6-3z M2 4.5l6 3 6-3 M8 7.5v7",
 };
 
 const TIER = { bronze: "var(--bronze)", silver: "var(--silver)", gold: "var(--gold)" };
-
-const FIXED_SUB = {
-  bronze: "append only", silver: "one row per trans_num", gold: "aggregates · features",
-  dbt: "SQL via Thrift",
-};
 
 const NOTES = {
   producer: "With monitoring on, a pause sends “Target down” after 1 min and “No streaming input” after about 5 min.",
@@ -65,28 +59,29 @@ const up = (s, key) => Boolean(s && s.services[key] && s.services[key].state ===
 const coreUp = (s) => ["kafka", "postgres", "minio", "spark-thrift"].every((k) => up(s, k));
 const streamingIn = (s) => (s.streaming.input_per_second || 0) > 0 && running(s, "spark-streaming");
 const producing = (s) => s.producer.rate > 0;
+const goldRefreshing = (s) => running(s, "airflow");
 
-// [path, live(state), label(state), label position, dotted]
+// [path, kind, live(state), label(state), [x, y, anchor]]; kind: data, control or meta.
 const EDGES = [
-  ["M174 128H214", producing],
-  ["M289 160V206", producing, (s) => `${fmtRate(s.producer.rate)}/s`, [296, 188]],
-  ["M364 238H404", streamingIn, (s) => `${fmtRate(s.streaming.input_per_second)}/s`, [367, 230]],
-  ["M574 228H594V128H614", streamingIn],
-  ["M699 160V206", streamingIn, () => "MERGE", [706, 188]],
-  ["M699 270V316", (s) => running(s, "airflow"), () => "staging view", [706, 298]],
-  ["M574 348H614", (s) => running(s, "airflow")],
-  ["M489 426V380", (s) => running(s, "airflow"), () => "every 10 min", [496, 408]],
-  ["M784 230H824", (s) => running(s, "metabase")],
-  ["M784 340H804V250H824", (s) => running(s, "metabase")],
-  ["M974 238H1014", (s) => running(s, "metabase"), () => "JDBC", [979, 230]],
-  ["M784 356H1014", (s) => running(s, "jupyter"), () => "PySpark", [880, 350]],
-  ["M364 696H404", (s) => running(s, "cadvisor") && running(s, "prometheus")],
-  ["M574 696H614", (s) => running(s, "prometheus") && running(s, "grafana")],
-  ["M784 696H824", (s) => running(s, "grafana"), () => "email alerts", [830, 700]],
-  ["M699 392V560", null, () => "data and metadata files", [706, 480], true],
-  ["M899 560V270", null, () => "catalog", [905, 420], true],
-  ["M974 592H1014", null, null, null, true],
-  ["M364 592H404", null, null, null, true],
+  ["M180 178H208", "data", producing],
+  ["M356 178H384", "data", producing],
+  ["M532 178H580", "data", streamingIn, (s) => `${fmtRate(s.streaming.input_per_second)}/s`, [556, 170]],
+  ["M740 178H788", "data", streamingIn, () => "append", [764, 170]],
+  ["M868 206V240", "data", streamingIn, () => "MERGE", [876, 227, "start"]],
+  ["M868 296V330", "data", goldRefreshing, () => "staging view", [876, 317, "start"]],
+  ["M660 296V330", "control", goldRefreshing, () => "every 10 min", [668, 317, "start"]],
+  ["M740 358H788", "data", goldRefreshing, () => "builds", [764, 350]],
+  ["M948 268H996", "data", (s) => running(s, "metabase"), () => "SQL", [972, 260]],
+  ["M1156 268H1184", "data", (s) => running(s, "metabase")],
+  ["M1170 268V178H1184", "data", (s) => running(s, "metabase"), () => "JDBC", [1164, 222, "end"]],
+  ["M948 358H1184", "data", (s) => running(s, "jupyter"), () => "PySpark", [1066, 350]],
+  ["M532 490H580", "meta"],
+  ["M868 386V462", "meta", null, () => "Parquet and metadata files", [876, 430, "start"]],
+  ["M1076 296V462", "meta", null, () => "table names", [1084, 430, "start"]],
+  ["M1156 490H1184", "meta"],
+  ["M532 610H580", "data", (s) => running(s, "cadvisor") && running(s, "prometheus")],
+  ["M740 610H788", "data", (s) => running(s, "prometheus") && running(s, "grafana")],
+  ["M948 610H996", "data", (s) => running(s, "grafana"), () => "email alerts", [1004, 614, "start"]],
 ];
 
 let catalog = [];
@@ -113,10 +108,22 @@ function text(parent, x, y, cls, value) {
 
 function fmtInt(n) { return Number(n || 0).toLocaleString("en-US"); }
 function fmtRate(n) { return n == null ? "–" : n >= 100 ? Math.round(n).toString() : Number(n).toFixed(1); }
+function fmtBytes(n) {
+  if (n == null) return "–";
+  const units = ["B", "kB", "MB", "GB"];
+  let i = 0;
+  while (n >= 1000 && i < units.length - 1) { n /= 1000; i += 1; }
+  return `${n >= 10 || i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
+}
 function fmtDuration(sec) {
   if (sec == null) return "";
   const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
   return h ? `${h} h ${m} min` : `${m} min`;
+}
+function fmtAgo(ms) {
+  if (!ms) return "–";
+  const sec = Math.max(0, Math.round(Date.now() / 1000 - ms / 1000));
+  return sec < 90 ? `${sec} s` : sec < 5400 ? `${Math.round(sec / 60)} min` : `${Math.round(sec / 3600)} h`;
 }
 
 function status(s, key) {
@@ -132,53 +139,79 @@ function status(s, key) {
 }
 
 function drawStatic() {
-  const lanes = $("lanes");
-  for (const [x, w, name] of LANES) {
-    text(lanes, x, 50, "lane-title", name.toUpperCase());
-    el("line", { x1: x, x2: x + w, y1: 62, y2: 62, class: "lane-rule" }, lanes);
+  const back = $("stages");
+  for (const [x, w, n, title, caption] of STAGES) {
+    el("rect", { x, y: 70, width: w, height: 340, rx: 8, class: "stage" }, back);
+    el("circle", { cx: x + 24, cy: 96, r: 10, class: "stage-num" }, back);
+    text(back, x + 24, 100, "stage-num-text", n);
+    text(back, x + 42, 100, "stage-title", title);
+    text(back, x + 42, 118, "stage-caption", caption);
   }
-  el("rect", { x: 600, y: 82, width: 198, height: 310, class: "frame" }, lanes);
-  text(lanes, 600, 410, "frame-label", "Iceberg · s3a://lakehouse/warehouse");
-  for (const [y, name] of [[530, "Platform"], [634, "Observability"]]) {
-    el("line", { x1: 24, x2: 1164, y1: y, y2: y, class: "lane-rule" }, lanes);
-    text(lanes, 24, y + 22, "row-title", name.toUpperCase());
+  for (const [y, title] of [[436, "Platform"], [556, "Observability"]]) {
+    el("line", { x1: 16, x2: 1336, y1: y, y2: y, class: "band-rule" }, back);
+    text(back, 16, y + 54, "band-title", title);
   }
   const edges = $("edges");
-  for (const [d, , , pos, dotted] of EDGES) {
-    const path = el("path", { d, class: dotted ? "edge dotted" : "edge" }, edges);
-    if (!dotted) path.setAttribute("marker-end", "url(#head)");
-    if (pos) text(edges, pos[0], pos[1], "edge-label", "");
+  for (const [d, kind, , , pos] of EDGES) {
+    const path = el("path", { d, class: `edge ${kind}` }, edges);
+    if (kind !== "meta") path.setAttribute("marker-end", "url(#head)");
+    if (pos) text(edges, pos[0], pos[1], "edge-label", "").setAttribute("text-anchor", pos[2] || "middle");
   }
   const nodes = $("nodes");
   for (const node of catalog) {
     const [x, y, w] = LAYOUT[node.key];
     const g = el("g", { class: node.container ? "node" : "node data", "data-key": node.key,
                         tabindex: 0, role: "button", "aria-label": node.label }, nodes);
-    el("rect", { x, y, width: w, height: H, rx: 2, class: "card" }, g);
-    if (TIER[node.key]) el("rect", { x, y, width: 4, height: H, class: "tier", fill: TIER[node.key] }, g);
-    const icon = el("g", { transform: `translate(${x + 12} ${y + 13})` }, g);
-    el("path", { d: ICONS[ICON_OF[node.key]], class: "icon" }, icon);
-    text(g, x + 36, y + 26, "name", node.label);
-    text(g, x + 12, y + 50, "sub", "");
-    if (node.container) el("rect", { x: x + w - 16, y: y + 8, width: 8, height: 8, class: "status stopped" }, g);
+    el("rect", { x, y, width: w, height: H, rx: 6, class: "card" }, g);
+    if (LOGO[node.key]) {
+      el("image", { href: `icons/${LOGO[node.key]}.svg`, x: x + 11, y: y + 18, width: 20, height: 20 }, g);
+    } else {
+      const icon = el("g", { transform: `translate(${x + 12} ${y + 19}) scale(1.15)` }, g);
+      const glyph = el("path", { d: GLYPH[node.key], class: "glyph" }, icon);
+      if (TIER[node.key]) glyph.style.stroke = TIER[node.key];
+    }
+    text(g, x + 40, y + 25, "name", node.label);
+    text(g, x + 40, y + 42, "sub", "");
+    if (node.container) el("circle", { cx: x + w - 11, cy: y + 11, r: 3.5, class: "status stopped" }, g);
     g.addEventListener("click", () => openPanel(node.key));
     g.addEventListener("keydown", (e) => { if (e.key === "Enter") openPanel(node.key); });
   }
 }
 
+function rowsOf(s, name) {
+  const t = s.tables.find((x) => x.name === name);
+  return t && t.rows != null ? `${fmtInt(t.rows)} rows` : "–";
+}
+
+const SUB = {
+  csv: (s) => `${fmtInt(s.producer.total)} rows`,
+  producer: (s) => s.producer.finished ? "whole CSV sent" : `${fmtRate(s.producer.rate)}/s · ${s.producer.known ? Math.floor(s.producer.percent) : "–"} %`,
+  kafka: () => "3 partitions",
+  "spark-streaming": (s) => s.streaming.batch_ms == null ? "micro-batches" : `batch ${(s.streaming.batch_ms / 1000).toFixed(1)} s`,
+  airflow: () => "schedules dbt",
+  dbt: () => "SQL models",
+  bronze: (s) => rowsOf(s, "bronze.transactions_raw"),
+  silver: (s) => rowsOf(s, "silver.transactions"),
+  gold: (s) => `${s.tables.filter((t) => t.name.startsWith("gold.")).length} tables`,
+  "spark-thrift": () => "JDBC :10000",
+  metabase: (s) => `${s.dashboards.length} dashboards`,
+  beeline: () => "make beeline",
+  jupyter: () => "PySpark",
+  "spark-master": () => "scheduler",
+  "spark-worker": () => "executors",
+  minio: () => "S3 object store",
+  "hive-metastore": (s) => `${s.tables.length} tables`,
+  postgres: (s) => `${s.databases.length} databases`,
+  cadvisor: () => "per container",
+  prometheus: () => "scrape 15 s",
+  grafana: () => "alerts by email",
+};
+
 function subText(node, s) {
-  if (node.key === "csv") return `${fmtInt(s.producer.total)} rows`;
-  if (FIXED_SUB[node.key]) return FIXED_SUB[node.key];
-  const st = status(s, node.key);
-  if (node.key === "producer" && st === "running") {
-    return s.producer.finished ? "whole CSV sent" : `${fmtRate(s.producer.rate)}/s · ${s.producer.percent} %`;
-  }
-  if (node.key === "spark-streaming" && st === "running" && s.streaming.batch_ms != null) {
-    return `batch ${(s.streaming.batch_ms / 1000).toFixed(1)} s`;
-  }
-  const stats = s.stats[node.key];
-  if (st === "running" && stats) return stats.memory.replace(/\s*\/\s*/, " / ");
-  return st === "stopped" ? (node.profile ? `stopped · ${node.profile}` : "stopped") : st;
+  const st = node.container ? status(s, node.key) : "running";
+  if (st === "stopped") return node.key === "producer" && s.services.producer ? "paused" : "stopped";
+  if (st !== "running") return st;
+  return SUB[node.key](s);
 }
 
 function render() {
@@ -194,15 +227,15 @@ function render() {
   const paths = document.querySelectorAll("#edges path");
   const labels = document.querySelectorAll("#edges text");
   let li = 0;
-  EDGES.forEach(([, live, label, pos, dotted], i) => {
-    const on = !dotted && live && live(state);
-    if (!dotted) {
-      paths[i].setAttribute("class", on ? "edge live" : "edge");
+  EDGES.forEach(([, kind, live, label, pos], i) => {
+    const on = Boolean(live && live(state));
+    if (kind !== "meta") {
+      paths[i].setAttribute("class", `edge ${kind}${on ? " live" : ""}`);
       paths[i].setAttribute("marker-end", on ? "url(#head-live)" : "url(#head)");
     }
     if (pos) {
-      labels[li].textContent = label ? label(state) : "";
-      labels[li].setAttribute("class", on ? "edge-label live" : "edge-label");
+      labels[li].textContent = label(state);
+      labels[li].classList.toggle("live", on);
       li += 1;
     }
   });
@@ -222,6 +255,7 @@ function renderFooter() {
   let line = p.known ? `${fmtInt(p.position)} / ${fmtInt(p.total)} rows · ${p.percent} %` : "position unknown until the producer exists: press Start all";
   if (p.known && label === "running") line += ` · ${fmtRate(p.rate)} ev/s` + (p.eta_seconds ? ` · ${fmtDuration(p.eta_seconds)} left` : "");
   $("producer-text").textContent = line;
+  $("producer-replay").hidden = !p.silver_complete;
   const toggle = $("producer-toggle");
   toggle.textContent = isUp ? "Pause" : "Resume";
   toggle.dataset.action = isUp ? "stop" : "start";
@@ -236,6 +270,34 @@ function esc(v) {
   return String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 }
 
+function grid(head, rows) {
+  const cells = (r, tag) => r.map((c, i) => `<${tag}${i ? ' class="num"' : ""}>${esc(c)}</${tag}>`).join("");
+  return `<table class="mini"><thead><tr>${cells(head, "th")}</tr></thead>
+    <tbody>${rows.map((r) => `<tr>${cells(r, "td")}</tr>`).join("")}</tbody></table>`;
+}
+
+function tableGrid(list) {
+  const rows = list.map((t) => [t.name, t.rows == null ? "view" : fmtInt(t.rows), fmtBytes(t.bytes), fmtAgo(t.committed_ms)]);
+  return grid(["Table", "Rows", "Size", "Written"], rows);
+}
+
+function extra(key, s) {
+  if (key === "hive-metastore") return `<h3>Tables it knows</h3>${tableGrid(s.tables)}`;
+  if (key === "postgres") {
+    return `<h3>Databases</h3>${grid(["Database", "Size"], s.databases.map((d) => [d.name, fmtBytes(d.bytes)]))}
+      <ul>${s.databases.map((d) => `<li><b>${esc(d.name)}</b>: ${esc(d.holds)}</li>`).join("")}</ul>`;
+  }
+  if (["bronze", "silver", "gold"].includes(key)) {
+    const list = s.tables.filter((t) => t.name.startsWith(`${key}.`));
+    return list.length ? `<h3>Tables</h3>${tableGrid(list)}` : "";
+  }
+  if (key === "metabase" && s.producer.silver_complete) {
+    return `<p class="warn">Live is empty: Silver already holds all ${fmtInt(s.producer.total)} rows, so this replay
+      adds nothing (MERGE skips every known trans_num). To show Live filling, press Reset then Start all before presenting.</p>`;
+  }
+  return "";
+}
+
 function openPanel(key, refresh = false) {
   const node = catalog.find((n) => n.key === key);
   if (key !== selected) panelHtml = null;
@@ -243,7 +305,6 @@ function openPanel(key, refresh = false) {
   document.querySelectorAll(".node").forEach((g) => g.classList.toggle("selected", g.dataset.key === key));
   const svc = state && state.services[key];
   const stats = state && state.stats[key];
-  const st = status(state, key);
   const rows = [];
   if (node.container) {
     rows.push(["State", svc ? `${svc.state}${svc.health ? " · " + svc.health : ""}` : "not created"]);
@@ -264,13 +325,16 @@ function openPanel(key, refresh = false) {
     action = `<p class="note">Core service: the pipeline depends on it, so it cannot be stopped from here.</p>`;
   }
   const info = `
-    <div class="layer">${esc(node.layer)}</div>
+    <div class="layer">${esc(STAGE_TITLE[node.layer])}</div>
     <h2>${esc(node.label)}</h2>
     <p class="role">${esc(node.role)}</p>
     ${rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${k === "Ports" ? v : esc(v)}</dd>`).join("")}</dl>` : ""}
     ${node.details.length ? `<ul>${node.details.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
+    ${state ? extra(key, state) : ""}
+    ${node.shell.length ? `<h3>In a terminal</h3><pre class="shell">${node.shell.map(esc).join("\n")}</pre>` : ""}
 `;
-  const links = node.links.map((l) => `<a href="${l.url}" target="_blank" rel="noopener">${esc(l.label)}<span>${esc(l.url.replace("http://", "").split("/")[0])} ↗</span></a>`).join("");
+  const dashboards = key === "metabase" && state ? state.dashboards : [];
+  const links = [...dashboards, ...node.links].map((l) => `<a href="${l.url}" target="_blank" rel="noopener">${esc(l.label)}<span>${esc(l.url.replace("http://", "").split("#")[0])} ↗</span></a>`).join("");
   const stable = (links ? `<div class="links">${links}</div>` : "") + action;
   $("panel-info").innerHTML = info;
   // Rewritten only on change, or a refresh between mousedown and mouseup would swallow a click.
@@ -392,6 +456,7 @@ document.querySelector("#panel .close").addEventListener("click", closePanel);
 $("containers").addEventListener("click", () => { $("docker").hidden = false; if (state) renderDocker(); });
 document.querySelector("#docker .close").addEventListener("click", () => { $("docker").hidden = true; });
 $("busy-close").addEventListener("click", () => { $("busy").hidden = true; watchingJob = false; });
+$("producer-replay").addEventListener("click", () => openPanel("metabase"));
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (!$("docker").hidden) $("docker").hidden = true;

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 GRID_WIDTH = 24
+REFRESH_SECONDS = {"Live": 60, "Fraud patterns": 600, "Risk": 600}
 LAST_HOUR = "event_ts >= current_timestamp() - INTERVAL 1 HOUR"
 
 

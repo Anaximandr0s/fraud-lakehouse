@@ -5,6 +5,9 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 
+from fraud_lakehouse.dashboards import DASHBOARDS, REFRESH_SECONDS
+
+METABASE = "http://localhost:3000"
 STREAMING_PREFIX = "metrics_spark_streaming_driver_spark_streaming_transactions_"
 
 
@@ -27,6 +30,7 @@ class Node:
     stoppable: bool = False
     container: bool = True
     details: tuple[str, ...] = field(default=())
+    shell: tuple[str, ...] = ()
 
 
 def minio_folder(prefix: str) -> str:
@@ -38,7 +42,7 @@ NODES = (
     Node(
         "csv",
         "fraud_all.csv",
-        "source",
+        "ingest",
         "Kaggle credit-card dataset (2019–2020), train and test files merged in time order.",
         container=False,
         details=("1,852,394 transactions", "0.52 % fraud", "data/fraud_all.csv, mounted read only"),
@@ -46,7 +50,7 @@ NODES = (
     Node(
         "producer",
         "Producer",
-        "ingestion",
+        "ingest",
         "Replays the CSV into Kafka at RATE events/s and resumes from its saved position.",
         ports=("8000 metrics (127.0.0.1)",),
         stoppable=True,
@@ -59,7 +63,7 @@ NODES = (
     Node(
         "kafka",
         "Kafka",
-        "ingestion",
+        "ingest",
         "Event log between the producer and Spark: topic transactions, 3 partitions, 24 h.",
         ports=("9094 external listener", "9092 internal"),
         details=("KRaft, one broker", "Spark keeps its own offsets in its checkpoint"),
@@ -67,7 +71,7 @@ NODES = (
     Node(
         "spark-streaming",
         "Spark Streaming",
-        "processing",
+        "process",
         "Every 30 s: Kafka → Bronze (raw) → Silver (typed, deduplicated with MERGE on trans_num).",
         ports=("4040 driver UI",),
         links=(Link("Streaming query", "http://localhost:4040/StreamingQuery/"),),
@@ -76,7 +80,7 @@ NODES = (
     Node(
         "spark-master",
         "Spark master",
-        "processing",
+        "platform",
         "Standalone cluster manager: gives each application at most 2 cores.",
         ports=("8080 UI", "7077 cluster"),
         links=(Link("Master UI", "http://localhost:8080"),),
@@ -84,7 +88,7 @@ NODES = (
     Node(
         "spark-worker",
         "Spark worker",
-        "processing",
+        "platform",
         "Runs the executors of streaming, thrift and Jupyter: 6 cores, 1920 MB.",
         ports=("8081 UI",),
         links=(Link("Worker UI", "http://localhost:8081"),),
@@ -92,7 +96,7 @@ NODES = (
     Node(
         "spark-thrift",
         "Thrift Server",
-        "processing",
+        "serve",
         "JDBC SQL endpoint over the Iceberg tables, used by dbt, Metabase and Beeline.",
         ports=("10000 JDBC", "4041 UI"),
         links=(Link("Thrift UI", "http://localhost:4041"),),
@@ -100,7 +104,7 @@ NODES = (
     Node(
         "bronze",
         "Bronze",
-        "storage",
+        "store",
         "bronze.transactions_raw: every Kafka message as received, append only.",
         container=False,
         links=(Link("Files in MinIO", minio_folder("warehouse/bronze.db/")),),
@@ -109,7 +113,7 @@ NODES = (
     Node(
         "silver",
         "Silver",
-        "storage",
+        "store",
         "silver.transactions: one typed row per trans_num; invalid rows go to the rejected table.",
         container=False,
         links=(Link("Files in MinIO", minio_folder("warehouse/silver.db/")),),
@@ -118,7 +122,7 @@ NODES = (
     Node(
         "gold",
         "Gold",
-        "storage",
+        "store",
         "Aggregates and ML features built by dbt from Silver.",
         container=False,
         links=(Link("Files in MinIO", minio_folder("warehouse/gold.db/")),),
@@ -127,7 +131,7 @@ NODES = (
     Node(
         "minio",
         "MinIO",
-        "storage",
+        "platform",
         "S3-compatible object store: holds every Iceberg data and metadata file.",
         ports=("9000 S3 API", "9001 console"),
         links=(Link("Console", "http://localhost:9001/browser/lakehouse"),),
@@ -135,21 +139,24 @@ NODES = (
     Node(
         "hive-metastore",
         "Hive Metastore",
-        "storage",
+        "platform",
         "Iceberg catalog: maps each table name to its current metadata file.",
         ports=("9083 Thrift (internal)",),
+        details=("Its own tables live in the PostgreSQL database metastore",),
+        shell=("make psql db=metastore",),
     ),
     Node(
         "postgres",
         "PostgreSQL",
-        "storage",
+        "platform",
         "Databases of the metastore, Airflow and Metabase.",
         ports=("5432 (internal)",),
+        shell=("make psql db=metastore", "make psql db=airflow", "make psql db=metabase"),
     ),
     Node(
         "dbt",
         "dbt",
-        "transform",
+        "process",
         "SQL models and tests that build Gold through the Thrift Server.",
         container=False,
         details=("Runs inside the Airflow container", "staging view → gold tables"),
@@ -157,7 +164,7 @@ NODES = (
     Node(
         "airflow",
         "Airflow",
-        "orchestration",
+        "process",
         "Schedules gold_refresh every 10 min and lakehouse_maintenance daily.",
         ports=("8082 UI",),
         links=(Link("DAGs", "http://localhost:8082"),),
@@ -167,17 +174,17 @@ NODES = (
     Node(
         "metabase",
         "Metabase",
-        "serving",
+        "serve",
         "Dashboards: Live on Silver, Fraud patterns and Risk on Gold.",
         ports=("3000 UI",),
-        links=(Link("Dashboards", "http://localhost:3000/collection/root"),),
+        links=(Link("All dashboards", f"{METABASE}/collection/root"),),
         profile="bi",
         stoppable=True,
     ),
     Node(
         "jupyter",
         "JupyterLab",
-        "serving",
+        "serve",
         "PySpark notebooks on the cluster: fraud model trained on gold.ml_features.",
         ports=("8888 UI",),
         links=(Link("JupyterLab", "http://localhost:8888/lab"),),
@@ -185,9 +192,22 @@ NODES = (
         stoppable=True,
     ),
     Node(
+        "beeline",
+        "Beeline",
+        "serve",
+        "Command-line SQL client of the Thrift Server, from the spark-thrift image.",
+        container=False,
+        details=("Runs once per command, not a service",),
+        shell=(
+            "make beeline",
+            "SELECT count(*) FROM silver.transactions;",
+            "SELECT * FROM gold.fraud_by_category LIMIT 5;",
+        ),
+    ),
+    Node(
         "prometheus",
         "Prometheus",
-        "ops",
+        "observability",
         "Scrapes Spark, the producer, MinIO and cAdvisor every 15 s.",
         ports=("9090 UI",),
         links=(Link("Targets", "http://localhost:9090/targets"),),
@@ -197,7 +217,7 @@ NODES = (
     Node(
         "grafana",
         "Grafana",
-        "ops",
+        "observability",
         "Pipeline dashboard and six email alerts.",
         ports=("3001 UI",),
         links=(
@@ -210,7 +230,7 @@ NODES = (
     Node(
         "cadvisor",
         "cAdvisor",
-        "ops",
+        "observability",
         "Memory and CPU of every container, read by Prometheus.",
         ports=("8080 (internal)",),
         profile="monitoring",
@@ -302,3 +322,73 @@ def progress(position: int, total: int, rate: float) -> dict:
         "remaining": remaining,
         "eta_seconds": round(remaining / rate) if rate > 0 and remaining else None,
     }
+
+
+DATABASES = {
+    "metastore": "every table name and its current Iceberg metadata file (Hive Metastore)",
+    "airflow": "DAG runs and task states",
+    "metabase": "users, questions and dashboards",
+    "postgres": "default database, empty",
+}
+TABLES_SQL = """
+SELECT d."NAME", t."TBL_NAME", t."TBL_TYPE",
+  max(CASE WHEN p."PARAM_KEY" = 'numRows' THEN p."PARAM_VALUE" END),
+  max(CASE WHEN p."PARAM_KEY" = 'numFiles' THEN p."PARAM_VALUE" END),
+  max(CASE WHEN p."PARAM_KEY" = 'totalSize' THEN p."PARAM_VALUE" END),
+  max(CASE WHEN p."PARAM_KEY" = 'current-snapshot-timestamp-ms' THEN p."PARAM_VALUE" END)
+FROM "TBLS" t JOIN "DBS" d USING ("DB_ID") LEFT JOIN "TABLE_PARAMS" p USING ("TBL_ID")
+GROUP BY 1, 2, 3 ORDER BY 1, 2
+"""
+DATABASES_SQL = (
+    "SELECT datname, pg_database_size(datname) FROM pg_database WHERE NOT datistemplate ORDER BY 1"
+)
+DASHBOARDS_SQL = "SELECT id, name FROM report_dashboard WHERE NOT archived"
+
+
+def psql_rows(text: str) -> list[list[str]]:
+    """Rows of psql -At -F'|' output."""
+    return [line.split("|") for line in text.splitlines() if line.strip()]
+
+
+def number(value: str) -> int | None:
+    return int(value) if value else None
+
+
+def parse_tables(text: str) -> list[dict]:
+    return [
+        {
+            "name": f"{db}.{table}",
+            "type": "view" if kind == "VIRTUAL_VIEW" else "table",
+            "rows": number(rows),
+            "files": number(files),
+            "bytes": number(size),
+            "committed_ms": number(committed),
+        }
+        for db, table, kind, rows, files, size, committed in psql_rows(text)
+    ]
+
+
+def parse_databases(text: str) -> list[dict]:
+    return [
+        {"name": name, "bytes": int(size), "holds": DATABASES.get(name, "")}
+        for name, size in psql_rows(text)
+    ]
+
+
+def dashboard_links(text: str) -> list[dict]:
+    """Metabase links of the project dashboards, in their declared order, ids read live."""
+    ids = {name: dashboard_id for dashboard_id, name in psql_rows(text)}
+    return [
+        {
+            "label": d.name,
+            "url": f"{METABASE}/dashboard/{ids[d.name]}#refresh={REFRESH_SECONDS[d.name]}",
+        }
+        for d in DASHBOARDS
+        if d.name in ids
+    ]
+
+
+def silver_complete(tables: list[dict], csv_rows: int) -> bool:
+    # Then a replay only sends trans_num values Silver holds: MERGE skips them, Live stays empty.
+    silver = next((t["rows"] for t in tables if t["name"] == "silver.transactions"), None)
+    return bool(csv_rows) and silver is not None and silver >= csv_rows

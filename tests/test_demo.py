@@ -149,3 +149,64 @@ def test_starting_jupyter_builds_it_without_restarting_paused_services():
             "jupyter",
         ]
     ]
+
+
+def test_parse_tables_reads_iceberg_stats_and_leaves_views_empty():
+    out = (
+        "silver|transactions|EXTERNAL_TABLE|1852394|30|119249354|1794695375898\n"
+        "staging|stg_transactions|VIRTUAL_VIEW||||\n"
+    )
+
+    assert demo.parse_tables(out) == [
+        {
+            "name": "silver.transactions",
+            "type": "table",
+            "rows": 1852394,
+            "files": 30,
+            "bytes": 119249354,
+            "committed_ms": 1794695375898,
+        },
+        {
+            "name": "staging.stg_transactions",
+            "type": "view",
+            "rows": None,
+            "files": None,
+            "bytes": None,
+            "committed_ms": None,
+        },
+    ]
+
+
+def test_parse_databases_adds_what_each_one_holds():
+    out = "airflow|13631488\nmetastore|11534336\n"
+
+    assert demo.parse_databases(out) == [
+        {"name": "airflow", "bytes": 13631488, "holds": demo.DATABASES["airflow"]},
+        {"name": "metastore", "bytes": 11534336, "holds": demo.DATABASES["metastore"]},
+    ]
+
+
+def test_dashboard_links_keep_the_project_dashboards_in_order_with_refresh():
+    out = "1|E-commerce Insights\n4|Risk\n2|Live\n3|Fraud patterns\n"
+
+    assert demo.dashboard_links(out) == [
+        {"label": "Live", "url": "http://localhost:3000/dashboard/2#refresh=60"},
+        {"label": "Fraud patterns", "url": "http://localhost:3000/dashboard/3#refresh=600"},
+        {"label": "Risk", "url": "http://localhost:3000/dashboard/4#refresh=600"},
+    ]
+
+
+def test_a_replay_adds_nothing_once_silver_holds_the_whole_csv():
+    tables = [{"name": "silver.transactions", "rows": 1852394}]
+
+    assert demo.silver_complete(tables, 1852394)
+    assert not demo.silver_complete([{"name": "silver.transactions", "rows": 10}], 1852394)
+    assert not demo.silver_complete([], 1852394)
+    assert not demo.silver_complete(tables, 0)
+
+
+def test_beeline_is_a_client_with_its_command():
+    beeline = demo.BY_KEY["beeline"]
+
+    assert not beeline.container
+    assert "make beeline" in beeline.shell

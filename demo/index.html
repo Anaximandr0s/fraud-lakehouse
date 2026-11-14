@@ -14,7 +14,7 @@
     </div>
     <nav class="actions">
       <button id="containers" class="ghost" title="docker compose ps and docker stats">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7h3v3H2zM5.5 7h3v3h-3zM9 7h3v3H9zM5.5 3.5h3v3h-3zM1 10.5h14c0 2.5-2.5 3.5-6 3.5S1 13 1 10.5z"/></svg>
+        <img src="icons/docker.svg" alt="" width="16" height="16">
         Containers
       </button>
       <span class="sep"></span>
@@ -25,7 +25,7 @@
   </header>
 
   <main>
-    <svg id="diagram" viewBox="0 0 1188 740" role="img" aria-label="Pipeline architecture">
+    <svg id="diagram" viewBox="0 60 1352 590" role="img" aria-label="Pipeline architecture">
       <defs>
         <marker id="head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0 0L8 4L0 8z" class="arrowhead"/>
@@ -34,18 +34,27 @@
           <path d="M0 0L8 4L0 8z" class="arrowhead live"/>
         </marker>
       </defs>
-      <g id="lanes"></g>
+      <g id="stages"></g>
       <g id="edges"></g>
       <g id="nodes"></g>
     </svg>
     <p class="legend">
+      <span><i class="line data"></i>data</span>
+      <span><i class="line live"></i>data moving now</span>
+      <span><i class="line control"></i>schedule</span>
+      <span><i class="line meta"></i>files and metadata</span>
       <span><i class="dot running"></i>running</span>
       <span><i class="dot starting"></i>starting</span>
       <span><i class="dot stopped"></i>stopped</span>
-      <span><i class="dot failed"></i>unhealthy or failed</span>
-      <span><i class="line live"></i>data moving</span>
-      <span>Click any box for its role, ports and links.</span>
+      <span><i class="dot failed"></i>failed</span>
+      <span class="hint">Click a card for its role, ports, links and tables.</span>
     </p>
+    <ol class="story">
+      <li><b>Ingest.</b> The producer replays the Kaggle CSV into the Kafka topic <code>transactions</code>, keyed by card, at <code>RATE</code> events per second.</li>
+      <li><b>Process.</b> Spark Structured Streaming reads Kafka in micro-batches, appends each message to Bronze and merges clean rows into Silver. Every 10 min Airflow runs dbt to rebuild Gold.</li>
+      <li><b>Store.</b> Bronze, Silver and Gold are Iceberg tables: Parquet files in MinIO, table names in the Hive Metastore, whose own data sits in PostgreSQL.</li>
+      <li><b>Serve.</b> Metabase and Beeline query the tables through the Thrift Server; Jupyter reads them with PySpark.</li>
+    </ol>
   </main>
 
   <aside id="panel" hidden>
@@ -59,6 +68,7 @@
       <span id="producer-state" class="badge">–</span>
       <div class="bar"><div id="producer-bar"></div></div>
       <span id="producer-text" class="mono">–</span>
+      <button id="producer-replay" class="link" hidden>replay: Silver already complete, Live stays empty</button>
       <button id="producer-toggle" class="small">–</button>
     </div>
     <div id="streaming-text" class="mono streaming">Streaming –</div>

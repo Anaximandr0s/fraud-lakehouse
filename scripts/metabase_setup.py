@@ -17,6 +17,7 @@ from typing import Any
 
 from fraud_lakehouse.dashboards import (
     DASHBOARDS,
+    REFRESH_SECONDS,
     card_payload,
     dashcards_payload,
     database_payload,
@@ -27,7 +28,6 @@ log = logging.getLogger("metabase_setup")
 COLLECTION = "fraud-lakehouse"
 HEALTH_TIMEOUT_SECONDS = 180
 DATABASE_ATTEMPTS = 6
-REFRESH_SECONDS = {"Live": 60, "Fraud patterns": 600, "Risk": 600}
 
 
 class MetabaseError(Exception):
