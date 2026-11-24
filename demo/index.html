@@ -25,24 +25,20 @@
   </header>
 
   <main>
-    <svg id="diagram" viewBox="0 60 1352 590" role="img" aria-label="Pipeline architecture">
+    <svg id="diagram" viewBox="0 40 1920 1000" role="img" aria-label="Pipeline architecture">
       <defs>
-        <marker id="head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0 0L8 4L0 8z" class="arrowhead"/>
-        </marker>
-        <marker id="head-live" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0 0L8 4L0 8z" class="arrowhead live"/>
+        <marker id="chevron" viewBox="0 0 10 12" refX="8" refY="6" markerWidth="5" markerHeight="6" orient="auto">
+          <path d="M1 1L8 6L1 11" class="chevron"/>
         </marker>
       </defs>
-      <g id="stages"></g>
+      <g id="back"></g>
       <g id="edges"></g>
       <g id="nodes"></g>
     </svg>
     <p class="legend">
-      <span><i class="line data"></i>data</span>
       <span><i class="line live"></i>data moving now</span>
-      <span><i class="line control"></i>schedule</span>
-      <span><i class="line meta"></i>files and metadata</span>
+      <span><i class="line idle"></i>no data moving</span>
+      <span><i class="line meta"></i>files, metadata, consumers</span>
       <span><i class="dot running"></i>running</span>
       <span><i class="dot starting"></i>starting</span>
       <span><i class="dot stopped"></i>stopped</span>
