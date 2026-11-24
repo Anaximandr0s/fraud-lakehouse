@@ -1,50 +1,11 @@
 "use strict";
 
 const SVG = "http://www.w3.org/2000/svg";
-const H = 56;
-
-// x, y, width of each card in the 1352 × 590 diagram; rows are centred on y 178, 268, 358.
-const LAYOUT = {
-  csv: [32, 150, 148], producer: [208, 150, 148], kafka: [384, 150, 148],
-  "spark-streaming": [580, 150, 160], airflow: [580, 240, 160], dbt: [580, 330, 160],
-  bronze: [788, 150, 160], silver: [788, 240, 160], gold: [788, 330, 160],
-  "spark-thrift": [996, 240, 160],
-  metabase: [1184, 150, 140], beeline: [1184, 240, 140], jupyter: [1184, 330, 140],
-  "spark-master": [376, 462, 156], "spark-worker": [580, 462, 160], minio: [788, 462, 160],
-  "hive-metastore": [996, 462, 160], postgres: [1184, 462, 140],
-  cadvisor: [384, 582, 148], prometheus: [580, 582, 160], grafana: [788, 582, 160],
-};
-
-// x, width, number, title, caption
-const STAGES = [
-  [16, 532, 1, "Ingest", "the CSV replayed as live events"],
-  [564, 192, 2, "Process", "stream, then batch"],
-  [772, 192, 3, "Store", "Iceberg tables on MinIO"],
-  [980, 356, 4, "Serve", "SQL, dashboards, notebooks"],
-];
 
 const STAGE_TITLE = {
   ingest: "1 · Ingest", process: "2 · Process", store: "3 · Store", serve: "4 · Serve",
   platform: "Platform", observability: "Observability",
 };
-
-const LOGO = {
-  producer: "python", kafka: "kafka", "spark-streaming": "spark", airflow: "airflow", dbt: "dbt",
-  "spark-thrift": "spark", metabase: "metabase", jupyter: "jupyter", "spark-master": "spark",
-  "spark-worker": "spark", minio: "minio", "hive-metastore": "hive", postgres: "postgresql",
-  prometheus: "prometheus", grafana: "grafana",
-};
-
-// Drawn for what has no logo of its own, on a 16 × 16 grid.
-const TABLE_GLYPH = "M2 2.5h12v11H2z M2 6h12 M2 9.5h12 M6.5 6v7.5";
-const GLYPH = {
-  csv: "M3 1.5h6.5L13 5v9.5H3z M9.5 1.5V5H13 M5.5 8.5h5 M5.5 11h5",
-  bronze: TABLE_GLYPH, silver: TABLE_GLYPH, gold: TABLE_GLYPH,
-  beeline: "M1.5 2.5h13v11h-13z M4 6l2.5 2L4 10 M8 10.5h4",
-  cadvisor: "M2 4.5l6-3 6 3v7l-6 3-6-3z M2 4.5l6 3 6-3 M8 7.5v7",
-};
-
-const TIER = { bronze: "var(--bronze)", silver: "var(--silver)", gold: "var(--gold)" };
 
 const NOTES = {
   producer: "With monitoring on, a pause sends “Target down” after 1 min and “No streaming input” after about 5 min.",
@@ -61,28 +22,63 @@ const streamingIn = (s) => (s.streaming.input_per_second || 0) > 0 && running(s,
 const producing = (s) => s.producer.rate > 0;
 const goldRefreshing = (s) => running(s, "airflow");
 
-// [path, kind, live(state), label(state), [x, y, anchor]]; kind: data, control or meta.
+// [path, live(state) or "meta", label, [x, y, anchor]] in the 1920 × 1060 diagram.
 const EDGES = [
-  ["M180 178H208", "data", producing],
-  ["M356 178H384", "data", producing],
-  ["M532 178H580", "data", streamingIn, (s) => `${fmtRate(s.streaming.input_per_second)}/s`, [556, 170]],
-  ["M740 178H788", "data", streamingIn, () => "append", [764, 170]],
-  ["M868 206V240", "data", streamingIn, () => "MERGE", [876, 227, "start"]],
-  ["M868 296V330", "data", goldRefreshing, () => "staging view", [876, 317, "start"]],
-  ["M660 296V330", "control", goldRefreshing, () => "every 10 min", [668, 317, "start"]],
-  ["M740 358H788", "data", goldRefreshing, () => "builds", [764, 350]],
-  ["M948 268H996", "data", (s) => running(s, "metabase"), () => "SQL", [972, 260]],
-  ["M1156 268H1184", "data", (s) => running(s, "metabase")],
-  ["M1170 268V178H1184", "data", (s) => running(s, "metabase"), () => "JDBC", [1164, 222, "end"]],
-  ["M948 358H1184", "data", (s) => running(s, "jupyter"), () => "PySpark", [1066, 350]],
-  ["M532 490H580", "meta"],
-  ["M868 386V462", "meta", null, () => "Parquet and metadata files", [876, 430, "start"]],
-  ["M1076 296V462", "meta", null, () => "table names", [1084, 430, "start"]],
-  ["M1156 490H1184", "meta"],
-  ["M532 610H580", "data", (s) => running(s, "cadvisor") && running(s, "prometheus")],
-  ["M740 610H788", "data", (s) => running(s, "prometheus") && running(s, "grafana")],
-  ["M948 610H996", "data", (s) => running(s, "grafana"), () => "email alerts", [1004, 614, "start"]],
+  ["M205 545H286", producing],
+  ["M430 545H466", producing],
+  ["M610 545H646", producing],
+  ["M810 545H871", streamingIn],
+  ["M1015 545H1036", streamingIn],
+  ["M1180 545H1201", goldRefreshing],
+  ["M1345 545H1411", (s) => running(s, "spark-thrift")],
+  ["M1555 545H1580V445H1601", (s) => running(s, "metabase")],
+  ["M1580 545V645H1601", (s) => running(s, "spark-thrift")],
+  ["M1725 445H1801", (s) => running(s, "metabase")],
+  ["M1725 645H1801", (s) => running(s, "spark-thrift")],
+  ["M1370 690H1440V835H1601", (s) => running(s, "jupyter"), "PySpark", [1450, 770, "start"]],
+  ["M1725 835H1801", (s) => running(s, "jupyter")],
+  ["M945 375V215H1016", "meta"],
+  ["M1110 375V274", "meta"],
+  ["M1275 375V215H1204", "meta"],
+  ["M1205 165H1801", "meta"],
+  ["M910 165H1016", "meta"],
+  ["M1110 790V729", "meta", "Parquet + metadata", [1120, 765, "start"]],
+  ["M1295 790V729", goldRefreshing, "builds Gold", [1305, 765, "start"]],
+  ["M1295 915V874", goldRefreshing, "every 10 min", [1312, 898, "start"]],
+  ["M730 610V672", "meta", "runs on", [740, 645, "start"]],
+  ["M730 746V762", "meta"],
+  ["M430 915H461", (s) => running(s, "cadvisor") && running(s, "prometheus")],
+  ["M595 915H626", (s) => running(s, "prometheus") && running(s, "grafana")],
+  ["M231 244H258", "meta"],
 ];
+
+const CADVISOR = "M2 4.5l6-3 6 3v7l-6 3-6-3z M2 4.5l6 3 6-3 M8 7.5v7";
+const TERMINAL = "M1.5 2.5h13v11h-13z M4 6l2.5 2L4 10 M8 10.5h4";
+
+// [kind, ...geometry, icon, extra]: card x y w h icon · cyl cx top w h icon labelY · tier x y colour role.
+const SHAPES = {
+  csv: ["cyl", 128, 482, 150, 150, null, 445],
+  producer: ["card", 290, 495, 140, 100, "python"],
+  kafka: ["card", 470, 495, 140, 100, "kafka"],
+  "spark-streaming": ["card", 650, 480, 160, 130, "spark"],
+  "spark-master": ["card", 650, 676, 160, 70, "spark"],
+  "spark-worker": ["card", 650, 766, 160, 70, "spark"],
+  bronze: ["tier", 875, 440, "var(--bronze)", "RAW EVENTS"],
+  silver: ["tier", 1040, 440, "var(--silver)", "CLEANED"],
+  gold: ["tier", 1205, 440, "var(--gold)", "BUSINESS"],
+  "hive-metastore": ["cyl", 1110, 110, 180, 165, "hive", 78],
+  postgres: ["card", 760, 120, 150, 90, "postgresql"],
+  minio: ["card", 1010, 790, 200, 120, "minio"],
+  dbt: ["card", 1235, 790, 120, 84, "dbt"],
+  airflow: ["card", 1235, 915, 120, 84, "airflow"],
+  "spark-thrift": ["cyl", 1485, 475, 140, 140, "spark", 438],
+  metabase: ["card", 1605, 400, 120, 90, "metabase"],
+  beeline: ["card", 1605, 600, 120, 90, TERMINAL],
+  jupyter: ["card", 1605, 790, 120, 90, "jupyter"],
+  cadvisor: ["card", 300, 870, 130, 90, CADVISOR],
+  prometheus: ["card", 465, 870, 130, 90, "prometheus"],
+  grafana: ["card", 630, 870, 130, 90, "grafana"],
+};
 
 let catalog = [];
 let state = null;
@@ -138,41 +134,110 @@ function status(s, key) {
   return "stopped";
 }
 
+
+function logo(parent, name, cx, cy, size) {
+  el("image", { href: `icons/${name}.svg`, x: cx - size / 2, y: cy - size / 2, width: size, height: size }, parent);
+}
+
+function icon(parent, name, cx, cy, size) {
+  if (!name.startsWith("M")) { logo(parent, name, cx, cy, size); return; }
+  const scale = size / 16;
+  const path = el("path", { d: name, class: "glyph", transform: `translate(${cx - size / 2} ${cy - size / 2}) scale(${scale})` }, parent);
+  path.style.strokeWidth = 3 / scale;
+}
+
+function drawCard(g, x, y, w, h, name) {
+  el("rect", { x, y, width: w, height: h, rx: 14, class: "card" }, g);
+  // Short cards put the logo beside the text: stacked, the two lines would overlap.
+  const short = h < 80;
+  const tx = short ? x + w / 2 + 16 : x + w / 2;
+  icon(g, name, short ? x + 28 : tx, short ? y + h / 2 : y + h * 0.3, short ? 30 : Math.min(44, h * 0.38));
+  text(g, tx, y + h * (short ? 0.46 : 0.66), "name", "");
+  text(g, tx, y + h * (short ? 0.74 : 0.86), "sub", "");
+  return [x + w - 4, y + 4];
+}
+
+function drawCylinder(g, cx, top, w, h, name, labelY) {
+  const rx = w / 2, ry = h * 0.14, bottom = top + h;
+  el("path", { d: `M${cx - rx} ${top + ry}V${bottom - ry}A${rx} ${ry} 0 0 0 ${cx + rx} ${bottom - ry}V${top + ry}`, class: "cyl" }, g);
+  el("ellipse", { cx, cy: top + ry, rx, ry, class: "cyl" }, g);
+  if (name) {
+    logo(g, name, cx, top + h * 0.58, w * 0.42);
+  } else {
+    for (const f of [0.42, 0.66]) {
+      el("path", { d: `M${cx - rx} ${top + h * f}A${rx} ${ry} 0 0 0 ${cx + rx} ${top + h * f}`, class: "cyl" }, g);
+    }
+    for (const f of [0.31, 0.55, 0.79]) {
+      for (const dx of [22, 36, 50]) el("circle", { cx: cx + rx - dx, cy: top + h * f + 10, r: 4, class: "cyl-dot" }, g);
+    }
+  }
+  text(g, cx, labelY, "caption", "");
+  text(g, cx, labelY + 20, "sub", "");
+  return [cx + rx - 6, top + 6];
+}
+
+// Bronze, Silver and Gold share one database-and-folders glyph, each in its own colour.
+function drawTier(g, x, y, color, role) {
+  g.style.color = color;
+  text(g, x + 70, y - 12, "tier-name", "");
+  el("rect", { x, y, width: 140, height: 210, rx: 14, class: "tier-box" }, g);
+  const gl = el("g", { class: "tier-glyph", transform: `translate(${x + 22} ${y + 38})` }, g);
+  for (const dy of [0, 18, 36]) el("path", { d: `M0 ${dy + 8}a20 8 0 0 0 40 0` }, gl);
+  el("ellipse", { cx: 20, cy: 8, rx: 20, ry: 8 }, gl);
+  el("path", { d: "M0 8V52a20 8 0 0 0 40 0V8 M40 30H52 M52 6V76 M52 6H60 M52 41H60 M52 76H60" }, gl);
+  for (const fy of [0, 35, 70]) el("path", { d: `M60 ${fy - 6}h10l3 4h24v24H60z` }, gl);
+  text(g, x + 70, y + 160, "tier-role", role);
+  text(g, x + 70, y + 184, "sub", "");
+  return null;
+}
+
+function persona(parent, x, y, name, sub) {
+  el("circle", { cx: x, cy: y - 16, r: 15, class: "persona" }, parent);
+  el("path", { d: `M${x - 25} ${y + 22}a25 22 0 0 1 50 0z`, class: "persona" }, parent);
+  text(parent, x, y + 44, "persona-name", name);
+  text(parent, x, y + 61, "persona-sub", sub);
+}
+
 function drawStatic() {
-  const back = $("stages");
-  for (const [x, w, n, title, caption] of STAGES) {
-    el("rect", { x, y: 70, width: w, height: 340, rx: 8, class: "stage" }, back);
-    el("circle", { cx: x + 24, cy: 96, r: 10, class: "stage-num" }, back);
-    text(back, x + 24, 100, "stage-num-text", n);
-    text(back, x + 42, 100, "stage-title", title);
-    text(back, x + 42, 118, "stage-caption", caption);
-  }
-  for (const [y, title] of [[436, "Platform"], [556, "Observability"]]) {
-    el("line", { x1: 16, x2: 1336, y1: y, y2: y, class: "band-rule" }, back);
-    text(back, 16, y + 54, "band-title", title);
-  }
+  const back = $("back");
+  // Terraform and OCI are the deployment target, drawn outside the Docker frame and not clickable.
+  text(back, 128, 92, "caption", "Deployment target");
+  el("rect", { x: 25, y: 108, width: 206, height: 272, rx: 18, class: "target" }, back);
+  logo(back, "terraform", 128, 158, 52);
+  text(back, 128, 206, "caption", "Terraform");
+  text(back, 128, 236, "edge-label middle", "provisions");
+  logo(back, "oracle", 128, 280, 58);
+  text(back, 128, 330, "caption", "OCI · A1.Flex");
+  text(back, 128, 352, "persona-sub", "2 OCPU · 12 GB RAM");
+  text(back, 128, 369, "persona-sub", "200 GB storage");
+
+  el("rect", { x: 262, y: 50, width: 1496, height: 980, rx: 44, class: "frame" }, back);
+  logo(back, "docker", 352, 128, 110);
+  text(back, 352, 222, "docker-word", "docker");
+  text(back, 450, 470, "heading", "Data Ingestion");
+  text(back, 730, 462, "heading", "Stream Processing");
+  text(back, 530, 850, "heading", "Monitoring");
+  el("rect", { x: 850, y: 375, width: 520, height: 350, rx: 36, class: "zone" }, back);
+  text(back, 1110, 706, "caption", "Apache Iceberg tables");
+  persona(back, 1835, 175, "Discover Data", "table catalog");
+  persona(back, 1835, 452, "BI Developer", "dashboards");
+  persona(back, 1835, 652, "Data Analyst", "SQL queries");
+  persona(back, 1835, 842, "Data Scientist", "fraud model");
+
   const edges = $("edges");
-  for (const [d, kind, , , pos] of EDGES) {
-    const path = el("path", { d, class: `edge ${kind}` }, edges);
-    if (kind !== "meta") path.setAttribute("marker-end", "url(#head)");
-    if (pos) text(edges, pos[0], pos[1], "edge-label", "").setAttribute("text-anchor", pos[2] || "middle");
+  for (const [d, live, label, at] of EDGES) {
+    el("path", { d, class: live === "meta" ? "edge meta" : "edge" }, edges);
+    if (label) text(edges, at[0], at[1], "edge-label", label).setAttribute("text-anchor", at[2] || "middle");
   }
+
   const nodes = $("nodes");
   for (const node of catalog) {
-    const [x, y, w] = LAYOUT[node.key];
-    const g = el("g", { class: node.container ? "node" : "node data", "data-key": node.key,
-                        tabindex: 0, role: "button", "aria-label": node.label }, nodes);
-    el("rect", { x, y, width: w, height: H, rx: 6, class: "card" }, g);
-    if (LOGO[node.key]) {
-      el("image", { href: `icons/${LOGO[node.key]}.svg`, x: x + 11, y: y + 18, width: 20, height: 20 }, g);
-    } else {
-      const icon = el("g", { transform: `translate(${x + 12} ${y + 19}) scale(1.15)` }, g);
-      const glyph = el("path", { d: GLYPH[node.key], class: "glyph" }, icon);
-      if (TIER[node.key]) glyph.style.stroke = TIER[node.key];
-    }
-    text(g, x + 40, y + 25, "name", node.label);
-    text(g, x + 40, y + 42, "sub", "");
-    if (node.container) el("circle", { cx: x + w - 11, cy: y + 11, r: 3.5, class: "status stopped" }, g);
+    const [kind, ...geo] = SHAPES[node.key];
+    const g = el("g", { class: `node ${kind}`, "data-key": node.key, tabindex: 0, role: "button", "aria-label": node.label }, nodes);
+    const draw = { card: drawCard, cyl: drawCylinder, tier: drawTier }[kind];
+    const dot = draw(g, ...geo);
+    g.querySelector(".name, .caption, .tier-name").textContent = kind === "tier" ? node.label.toUpperCase() : node.label;
+    if (node.container && dot) el("circle", { cx: dot[0], cy: dot[1], r: 8, class: "status stopped" }, g);
     g.addEventListener("click", () => openPanel(node.key));
     g.addEventListener("keydown", (e) => { if (e.key === "Enter") openPanel(node.key); });
   }
@@ -214,6 +279,7 @@ function subText(node, s) {
   return SUB[node.key](s);
 }
 
+
 function render() {
   if (!state) return;
   for (const node of catalog) {
@@ -221,23 +287,13 @@ function render() {
     g.querySelector(".sub").textContent = subText(node, state);
     if (!node.container) continue;
     const st = status(state, node.key);
-    g.querySelector(".status").setAttribute("class", `status ${st}`);
+    const dot = g.querySelector(".status");
+    if (dot) dot.setAttribute("class", `status ${st}`);
     g.classList.toggle("down", st === "stopped");
   }
   const paths = document.querySelectorAll("#edges path");
-  const labels = document.querySelectorAll("#edges text");
-  let li = 0;
-  EDGES.forEach(([, kind, live, label, pos], i) => {
-    const on = Boolean(live && live(state));
-    if (kind !== "meta") {
-      paths[i].setAttribute("class", `edge ${kind}${on ? " live" : ""}`);
-      paths[i].setAttribute("marker-end", on ? "url(#head-live)" : "url(#head)");
-    }
-    if (pos) {
-      labels[li].textContent = label(state);
-      labels[li].classList.toggle("live", on);
-      li += 1;
-    }
+  EDGES.forEach(([, live], i) => {
+    if (live !== "meta") paths[i].classList.toggle("live", Boolean(live(state)));
   });
   renderFooter();
   if (selected) openPanel(selected, true);
