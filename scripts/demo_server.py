@@ -227,6 +227,12 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         pass
 
+    def end_headers(self) -> None:
+        # Without it, browsers keep an old app.js after the page changes.
+        if not self.path.startswith("/api/"):
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def allowed_host(self) -> bool:
         # Blocks DNS rebinding: a remote page resolving its own name to 127.0.0.1.
         return self.headers.get("Host") in (f"localhost:{PORT}", f"127.0.0.1:{PORT}")
