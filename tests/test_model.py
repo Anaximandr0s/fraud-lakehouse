@@ -7,9 +7,7 @@ from pyspark.ml.linalg import Vectors
 from fraud_lakehouse.model import (
     FEATURES,
     SEED,
-    best_threshold,
     check_splits,
-    evaluate,
     fraud_probability,
     pipeline,
     prepare,
@@ -79,35 +77,6 @@ def test_time_split_keeps_the_latest_rows_for_validation(spark):
 
     assert fit.count() + validation.count() == 20
     assert fit.agg({"trans_ts": "max"}).first()[0] < validation.agg({"trans_ts": "min"}).first()[0]
-
-
-def scored(spark, pairs):
-    return spark.createDataFrame(
-        [(Vectors.dense([1 - p, p]), label) for p, label in pairs], ["probability", "is_fraud"]
-    )
-
-
-def test_evaluate_counts_precision_and_recall_at_the_threshold(spark):
-    # At 0.5: flagged = 0.9 (fraud), 0.8 (legit), 0.6 (fraud); missed fraud = 0.2.
-    pairs = [(0.9, 1), (0.8, 0), (0.6, 1), (0.2, 1), (0.1, 0), (0.05, 0)]
-
-    metrics = evaluate(scored(spark, pairs), threshold=0.5)
-
-    assert metrics["precision"] == pytest.approx(2 / 3)
-    assert metrics["recall"] == pytest.approx(2 / 3)
-    assert 0 < metrics["pr_auc"] <= 1
-
-
-def test_best_threshold_maximises_f1(spark):
-    pairs = [(0.95, 1), (0.9, 1), (0.85, 1), (0.6, 0), (0.55, 0), (0.3, 0), (0.1, 0)]
-
-    assert best_threshold(scored(spark, pairs)) == pytest.approx(0.61)
-
-
-def test_best_threshold_can_go_above_095_where_class_weights_push_frauds(spark):
-    pairs = [(0.995, 1), (0.99, 1), (0.975, 0), (0.97, 0), (0.6, 0)]
-
-    assert best_threshold(scored(spark, pairs)) == pytest.approx(0.98)
 
 
 def test_pipeline_trains_on_the_prepared_features(spark):

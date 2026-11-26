@@ -1,7 +1,6 @@
-"""Fraud model on gold.ml_features: features, class weights, threshold choice, metrics."""
+"""Fraud model on gold.ml_features: features, class weights, time split, Spark ML pipeline."""
 
 from pyspark.ml import Pipeline, PipelineModel
-from pyspark.ml.evaluation import BinaryClassificationEvaluator
 from pyspark.ml.feature import OneHotEncoder, StringIndexer, VectorAssembler
 from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame
@@ -25,8 +24,6 @@ NUMERIC = [
     "secs_since_last_tx",
 ]
 FEATURES = [*NUMERIC, "category"]
-# Up to 0.99: class weights push fraud probabilities high, so the best F1 can sit above 0.95.
-THRESHOLDS = [round(0.01 * i, 2) for i in range(1, 100)]
 
 
 def check_splits(rows_per_split: dict[str, int]) -> None:
@@ -84,47 +81,6 @@ def pipeline(classifier) -> Pipeline:
 
 def fraud_probability(predictions: DataFrame) -> DataFrame:
     return predictions.withColumn("p_fraud", vector_to_array("probability")[1])
-
-
-def best_threshold(predictions: DataFrame) -> float:
-    """The threshold with the best F1; chosen on validation, never on test."""
-    scored = fraud_probability(predictions)
-    sums = [
-        F.sum(((F.col("p_fraud") >= t) & (F.col(LABEL) == 1)).cast("int")).alias(f"tp_{i}")
-        for i, t in enumerate(THRESHOLDS)
-    ] + [
-        F.sum((F.col("p_fraud") >= t).cast("int")).alias(f"flagged_{i}")
-        for i, t in enumerate(THRESHOLDS)
-    ]
-    row = scored.agg(F.sum(LABEL).alias("frauds"), *sums).first()
-
-    def f1(i: int) -> float:
-        tp, flagged = row[f"tp_{i}"], row[f"flagged_{i}"]
-        return 2 * tp / (flagged + row["frauds"]) if flagged + row["frauds"] else 0.0
-
-    return THRESHOLDS[max(range(len(THRESHOLDS)), key=lambda i: (f1(i), -i))]
-
-
-def evaluate(predictions: DataFrame, threshold: float) -> dict[str, float]:
-    # numBins=0: every distinct score is a curve point; 1000 bins blur the high-precision end.
-    pr_auc = BinaryClassificationEvaluator(
-        labelCol=LABEL, rawPredictionCol="probability", metricName="areaUnderPR", numBins=0
-    ).evaluate(predictions)
-    flagged = F.col("p_fraud") >= threshold
-    row = (
-        fraud_probability(predictions)
-        .agg(
-            F.sum((flagged & (F.col(LABEL) == 1)).cast("int")).alias("tp"),
-            F.sum(flagged.cast("int")).alias("flagged"),
-            F.sum(LABEL).alias("frauds"),
-        )
-        .first()
-    )
-    return {
-        "pr_auc": pr_auc,
-        "precision": row["tp"] / row["flagged"] if row["flagged"] else 0.0,
-        "recall": row["tp"] / row["frauds"] if row["frauds"] else 0.0,
-    }
 
 
 def top_features(model: PipelineModel, predictions: DataFrame, n: int) -> list[tuple[str, float]]:
