@@ -36,6 +36,7 @@ jobs:
             ci
             docs
             deps
+            deps-dev
           requireScope: false
           subjectPattern: ^[a-z].*[^.]$
           subjectPatternError: Start the subject with a lowercase letter and end it without a period.
