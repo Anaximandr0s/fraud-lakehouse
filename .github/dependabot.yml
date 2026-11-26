@@ -17,6 +17,10 @@ updates:
     commit-message:
       prefix: build
       include: scope
+    ignore:
+      # The local test SparkSession must match the cluster's Spark 3.5 (SPARK_IMAGE in .env.example).
+      - dependency-name: pyspark
+        versions: [">=3.6"]
     groups:
       python:
         patterns: ["*"]
