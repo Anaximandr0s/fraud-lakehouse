@@ -227,7 +227,7 @@ SMTP is a Gmail account with an app password. Settings come from `.env`:
 | Prometheus | 9090 |
 | Jupyter | 8888 |
 | Producer metrics (127.0.0.1 only) | 8000 |
-| Demo page (`make demo`, a host process on 127.0.0.1) | 8099 |
+| Control center (`make control-center`, a host process on 127.0.0.1) | 8099 |
 
 ## 9. Resources (memory limits)
 
@@ -284,13 +284,13 @@ Measured in step 9, every profile running for 8 h at RATE=20 (Prometheus, workin
 - spark-streaming at 1 G: RSS 878 MiB after 1 h, then 960–998 MiB from the second hour on (512m heap fully
   committed, 179 MB metaspace, 356 threads, `MALLOC_ARENA_MAX=2` already set), above 90 % for 415 min, 137 limit
   hits; flat, not a leak, so the limit went to 1.25 G (61 % 10 min after a restart).
-- grafana at 512m, after a stop and start from the demo page: 243 MiB of process plus 200 MiB of its own files in
+- grafana at 512m, after a stop and start from the control center: 243 MiB of process plus 200 MiB of its own files in
   active page cache, 89–92 % for 5 min; after a recreate 71–81 %. At 768m, after a stop and start: 65–75 % for
   6 min, then 53 %.
-- `make recovery-check`: every service healthy 136 s after `down`. From the demo page, Stop all took 29 s and
+- `make recovery-check`: every service healthy 136 s after `down`. From the control center, Stop all took 29 s and
   Start all (`make up-all`, image builds from cache and Metabase setup included) 395 s.
 
-`make up-all` is for demos only. Daily development runs `core` + one profile.
+`make up-all` runs every profile at once. Daily development runs `core` + one profile.
 
 ## 10. Build plan
 
@@ -308,7 +308,7 @@ Every service gets its healthcheck, restart policy and memory limit in the step 
 | 6 | Metabase | 3 dashboards update on their own; optional fraud-rate alert after measuring the hourly rate |
 | 7 | Monitoring + alerts | stopping the producer sends an email alert within 6 min |
 | 8 | Data science notebooks (needs the full replay: `RATE=500` on first run) | notebook reads `gold.ml_features`, trains a model, prints PR-AUC, precision, recall on the test split |
-| 9 | Hardening: check healthchecks and restart policies, `make demo`, final README | `docker compose down && up`: everything recovers, no data loss |
+| 9 | Hardening: check healthchecks and restart policies, `make control-center`, final README | `docker compose down && up`: everything recovers, no data loss |
 
 ## 11. Decisions
 

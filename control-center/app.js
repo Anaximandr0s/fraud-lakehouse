@@ -364,7 +364,7 @@ function openPanel(key, refresh = false) {
     const blocked = verb === "start" && !coreUp(state);
     action = `<button class="${verb === "stop" ? "" : "primary"}" data-action="${verb}" data-key="${key}"${blocked ? " disabled" : ""}>${name}</button>
       ${blocked ? `<p class="note">Core services are down: press Start all first.</p>` : ""}
-      <p class="note">Ingestion (Kafka to Silver) never waits on it, so it can be stopped during a demo.${NOTES[key] ? " " + NOTES[key] : ""}</p>`;
+      <p class="note">Ingestion (Kafka to Silver) never waits on it, so it can be stopped at any time.${NOTES[key] ? " " + NOTES[key] : ""}</p>`;
   } else if (node.container) {
     action = `<p class="note">Core service: the pipeline depends on it, so it cannot be stopped from here.</p>`;
   }
@@ -476,11 +476,11 @@ async function act(button) {
   try {
     res = await fetch("/api/action", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Demo": "1" },
+      headers: { "Content-Type": "application/json", "X-Control-Center": "1" },
       body: JSON.stringify({ action: button.dataset.action, key }),
     });
   } catch {
-    alert("The demo server does not answer: is make demo still running?");
+    alert("The control center server does not answer: is make control-center still running?");
     return;
   }
   if (res.status === 202) {

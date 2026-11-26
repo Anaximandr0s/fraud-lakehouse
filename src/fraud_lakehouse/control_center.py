@@ -1,4 +1,4 @@
-"""What each box of the demo page is, what it may do, and parsers for its live state."""
+"""What each box of the control center is, what it may do, and parsers for its live state."""
 
 import base64
 import json
@@ -259,7 +259,7 @@ def commands(action: str, key: str | None) -> list[list[str]]:
         raise ValueError(f"unknown action {action!r}")
     node = BY_KEY.get(key or "")
     if node is None or not node.stoppable:
-        raise ValueError(f"{key} cannot be stopped or started from the demo page")
+        raise ValueError(f"{key} cannot be stopped or started from the control center")
     if action == "start" and key == "jupyter":
         # Built on demand, unlike the images of make up-all; make up-notebook would also restart
         # every stopped core service, a paused producer included.
