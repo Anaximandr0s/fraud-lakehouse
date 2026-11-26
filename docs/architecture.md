@@ -23,7 +23,7 @@ Storage: Iceberg tables on MinIO (s3a://lakehouse/warehouse), catalog = Hive Met
 | producer | built from `producer/` | replays `fraud_all.csv` at `RATE` events/s (default 20; `RATE=500` on first run replays everything in ~1 h); keeps original dates, adds `event_ts`; stores its position to resume after restart; at the end of the file it logs and stays idle (exiting would loop under `restart: unless-stopped`) |
 | minio | `pgsty/minio` | S3 storage, bucket `lakehouse` (upstream MinIO no longer publishes images) |
 | postgres | `postgres` | one instance, 3 databases: `metastore`, `airflow`, `metabase` |
-| hive-metastore | `apache/hive` 3.1.3 (metastore service) | Iceberg catalog, port 9083; pinned to 3.1.3, the newest metastore Spark 3.5's Hive client accepts (ADR 0001); the pinned Postgres JDBC driver replaces the image's old one; S3A uses the image's own `hadoop-aws` |
+| hive-metastore | `apache/hive` 3.1.3 (metastore service) | Iceberg catalog, port 9083; pinned to 3.1.3, the newest metastore Spark 3.5's Hive client accepts; the pinned Postgres JDBC driver replaces the image's old one; S3A uses the image's own `hadoop-aws` |
 | spark-master / spark-worker | built from `spark/` (on `apache/spark` 3.5, Python 3.10) | Spark Standalone; worker 6 cores, `SPARK_WORKER_MEMORY=1920m` |
 | spark-streaming | same Spark image | long-running job: Kafka → Bronze → Silver in one `foreachBatch` |
 | spark-thrift | same Spark image | JDBC SQL endpoint on port 10000, FAIR scheduler |
@@ -314,12 +314,12 @@ Every service gets its healthcheck, restart policy and memory limit in the step 
 
 - Iceberg over plain Parquet: atomic commits on S3, `MERGE` for dedup, compaction, time travel.
 - Hive Metastore as catalog: shared by streaming, thrift and Jupyter; Metabase sees tables in the default catalog.
-  Spike passed on Hive 3.1.3 (ADR 0001); JDBC catalog fallback not needed.
+  Spike passed on Hive 3.1.3; JDBC catalog fallback not needed.
 - Spark Standalone instead of YARN; Spark Thrift Server instead of HiveServer2.
 - Python 3.10 everywhere: one version, the one of the Spark image, so driver and workers always match.
-- Streaming: one `foreachBatch` for Bronze and Silver instead of two queries; simpler, Bronze may hold replay duplicates (ADR).
+- Streaming: one `foreachBatch` for Bronze and Silver instead of two queries; simpler, Bronze may hold replay duplicates.
 - dbt for Gold: SQL models, ordering via `ref()`, tests; runs in its own venv inside the Airflow image, no extra container.
-- `airflow standalone` in one container: enough for one laptop, not for production (ADR).
+- `airflow standalone` in one container: enough for one laptop, not for production.
 - No MLflow, no Schema Registry, no Kafka Connect, no Alertmanager, no Celery, no kafka-exporter: not needed at this scale.
 
 ## 12. Out of scope
