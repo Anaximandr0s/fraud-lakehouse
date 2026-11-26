@@ -1,4 +1,4 @@
-"""Serves the demo page on 127.0.0.1; its buttons run fixed docker compose and make commands."""
+"""Serves the control center on 127.0.0.1; each button runs a fixed docker compose or make line."""
 
 import io
 import json
@@ -14,15 +14,15 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from fraud_lakehouse import demo
+from fraud_lakehouse import control_center
 
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT = "fraud-lakehouse"
-PORT = int(os.environ.get("DEMO_PORT", "8099"))
+PORT = int(os.environ.get("CONTROL_CENTER_PORT", "8099"))
 STREAMING_METRICS = "http://localhost:4040/metrics/prometheus/"
 PRODUCER_METRICS = "http://127.0.0.1:8000/metrics"
 
-log = logging.getLogger("demo")
+log = logging.getLogger("control-center")
 
 
 def run(args: list[str], timeout: float = 30) -> str:
@@ -70,7 +70,9 @@ class Live:
             producer_state = self.ps.get("producer", {}).get("state", "absent")
             known = self.position is not None and self.total_rows > 0
             progress = (
-                demo.progress(self.position, self.total_rows, self.producer_rate) if known else {}
+                control_center.progress(self.position, self.total_rows, self.producer_rate)
+                if known
+                else {}
             )
             return {
                 "services": self.ps,
@@ -81,7 +83,7 @@ class Live:
                     "finished": self.finished,
                     "rate": round(self.producer_rate, 1),
                     "known": known,
-                    "silver_complete": demo.silver_complete(self.tables, self.total_rows),
+                    "silver_complete": control_center.silver_complete(self.tables, self.total_rows),
                     **progress,
                 },
                 "tables": self.tables,
@@ -99,11 +101,13 @@ class Live:
             time.sleep(2)
 
     def refresh_fast(self) -> None:
-        ps = demo.parse_ps(
+        ps = control_center.parse_ps(
             run(["docker", "compose", "--profile", "*", "ps", "-a", "--format", "json"])
         )
-        rates = demo.streaming_rates(demo.parse_metrics(fetch(STREAMING_METRICS)))
-        producer = demo.parse_metrics(fetch(PRODUCER_METRICS))
+        rates = control_center.streaming_rates(
+            control_center.parse_metrics(fetch(STREAMING_METRICS))
+        )
+        producer = control_center.parse_metrics(fetch(PRODUCER_METRICS))
         saved = None
         if "producer_position" not in producer and "producer" in ps and not self.job["running"]:
             saved = read_saved_position()
@@ -135,7 +139,7 @@ class Live:
         while True:
             try:
                 out = run(["docker", "stats", "--no-stream", "--format", "{{json .}}"])
-                stats = demo.parse_stats(out, PROJECT)
+                stats = control_center.parse_stats(out, PROJECT)
                 with self.lock:
                     self.stats = stats
             except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -145,9 +149,13 @@ class Live:
     def poll_postgres(self) -> None:
         while True:
             try:
-                tables = demo.parse_tables(psql("metastore", demo.TABLES_SQL))
-                databases = demo.parse_databases(psql("postgres", demo.DATABASES_SQL))
-                dashboards = demo.dashboard_links(psql("metabase", demo.DASHBOARDS_SQL))
+                tables = control_center.parse_tables(psql("metastore", control_center.TABLES_SQL))
+                databases = control_center.parse_databases(
+                    psql("postgres", control_center.DATABASES_SQL)
+                )
+                dashboards = control_center.dashboard_links(
+                    psql("metabase", control_center.DASHBOARDS_SQL)
+                )
                 with self.lock:
                     self.tables, self.databases, self.dashboards = tables, databases, dashboards
             except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -155,7 +163,7 @@ class Live:
             time.sleep(15)
 
     def start_job(self, action: str, key: str | None) -> bool:
-        commands = demo.commands(action, key)
+        commands = control_center.commands(action, key)
         with self.lock:
             if self.job["running"]:
                 return False
@@ -184,7 +192,7 @@ class Live:
 
     def run_command(self, args: list[str]) -> bool:
         self.job_log.append("$ " + " ".join(args))
-        # Own session: Ctrl+C on make demo closes the page without killing a half-done action.
+        # Own session: Ctrl+C on make control-center closes the page, not a half-done action.
         process = subprocess.Popen(
             args,
             cwd=ROOT,
@@ -250,7 +258,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.allowed_host():
             self.send_json(403, {"error": "forbidden host"})
         elif self.path == "/api/catalog":
-            self.send_json(200, demo.catalog())
+            self.send_json(200, control_center.catalog())
         elif self.path == "/api/state":
             self.send_json(200, self.live.snapshot())
         else:
@@ -258,7 +266,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         # A custom header forces a CORS preflight, never answered here: other sites cannot post.
-        if not self.allowed_host() or self.headers.get("X-Demo") != "1":
+        if not self.allowed_host() or self.headers.get("X-Control-Center") != "1":
             self.send_json(403, {"error": "forbidden"})
             return
         if self.path != "/api/action":
@@ -283,9 +291,9 @@ def main() -> None:
     threading.Thread(target=live.poll_stats, daemon=True).start()
     threading.Thread(target=live.poll_postgres, daemon=True).start()
     Handler.live = live
-    handler = partial(Handler, directory=str(ROOT / "demo"))
+    handler = partial(Handler, directory=str(ROOT / "control-center"))
     server = ThreadingHTTPServer(("127.0.0.1", PORT), handler)
-    log.info("demo page on http://localhost:%d (Ctrl+C to stop the page, not the stack)", PORT)
+    log.info("control center on http://localhost:%d (Ctrl+C to stop the page, not the stack)", PORT)
     server.serve_forever()
 
 

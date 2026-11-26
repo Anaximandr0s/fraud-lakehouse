@@ -2,7 +2,7 @@
 # A provenance attestation carries a timestamp: every build would get a new image ID, and
 # docker compose up would recreate every container even when nothing changed.
 export BUILDX_NO_DEFAULT_ATTESTATIONS := 1
-.PHONY: help lint test jars data build up-core down logs beeline reset-producer silver-count reset-streaming dbt ml-features up-orchestration airflow-password dag-check up-bi metabase-setup metabase-check up-monitoring monitoring-check up-notebook notebook-run up-all demo recovery-check psql
+.PHONY: help lint test jars data build up-core down logs beeline reset-producer silver-count reset-streaming dbt ml-features up-orchestration airflow-password dag-check up-bi metabase-setup metabase-check up-monitoring monitoring-check up-notebook notebook-run up-all control-center recovery-check psql
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -59,8 +59,8 @@ monitoring-check: ## Validate prometheus.yml and list each scrape target's healt
 
 up-all: up-orchestration up-monitoring metabase-setup ## Start every profile but notebook, with the Metabase dashboards
 
-demo: ## Serve the demo control page on http://localhost:8099 (start, pause, stop from the browser)
-	uv run python scripts/demo_server.py
+control-center: ## Serve the control center on http://localhost:8099 (start, pause, stop from the browser)
+	uv run python scripts/control_center.py
 
 recovery-check: ## docker compose down then up: Silver keeps every row, gets no duplicate, streaming resumes
 	uv run python scripts/recovery_check.py

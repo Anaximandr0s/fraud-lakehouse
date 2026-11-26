@@ -9,7 +9,7 @@ Card transactions flow from Kafka through Spark Structured Streaming into Apache
 (Bronze, Silver, Gold) on S3-compatible storage. From there they feed live dashboards, SQL and a fraud model.
 Every service is open source, pinned and started by one command.
 
-![Demo page: the pipeline with live state, a service panel and the container list](docs/images/demo.gif)
+![Control center: the pipeline with live state, a service panel and the container list](docs/images/control-center.gif)
 
 ## Highlights
 
@@ -28,7 +28,7 @@ Every service is open source, pinned and started by one command.
   - Airflow schedules Gold and nightly table maintenance.
   - Prometheus, Grafana and cAdvisor track every container and send email alerts.
   - Every long-running service has a healthcheck, a restart policy and a measured memory limit.
-- **Demo page.** A local control page draws the pipeline with live state and links. It starts, stops and pauses
+- **Control center.** A local page draws the pipeline with live state and links. It starts, stops and pauses
   the stack without a terminal.
 - **Fraud model.** Gradient-boosted trees reach a PR-AUC of 0.88 on a time-based test split (see [Results](#results)).
 
@@ -58,7 +58,7 @@ Requirements:
 ```
 cp .env.example .env   # then replace every change-me password
 make up-all            # downloads jars and the dataset, builds the images, starts every service but Jupyter
-make demo              # control page on http://localhost:8099
+make control-center    # control center on http://localhost:8099
 ```
 
 Once the jars, dataset and images are in place, `make up-all` takes about 7 minutes.
@@ -67,14 +67,14 @@ Once the jars, dataset and images are in place, `make up-all` takes about 7 minu
 
 - **Stop all** on the page, or `make down`, removes every container and network. The services stop using RAM and
   CPU, and their ports are released. The data stays in Docker volumes.
-- `make demo` itself keeps port 8099 until you press `Ctrl+C` in its terminal. That closes the page, not the
+- `make control-center` itself keeps port 8099 until you press `Ctrl+C` in its terminal. That closes the page, not the
   services.
-- To resume, run `make demo` (if it is not still running), open http://localhost:8099 and press **Start all**. The
+- To resume, run `make control-center` (if it is not still running), open http://localhost:8099 and press **Start all**. The
   producer continues from its saved row and Spark from its checkpoint.
 
-## Demo page
+## Control center
 
-`make demo` serves http://localhost:8099 from a host process bound to 127.0.0.1. No container gets the Docker socket
+`make control-center` serves http://localhost:8099 from a host process bound to 127.0.0.1. No container gets the Docker socket
 .
 
 - **Start all** runs `make up-all`, **Stop all** runs `make down`, and **Reset** deletes every volume (you must
@@ -90,8 +90,8 @@ Once the jars, dataset and images are in place, `make up-all` takes about 7 minu
 - The bottom bar shows the producer's position in the CSV, its rate, the time left and Spark's rates.
 
 The Live dashboard reads the last hour of Silver, so it fills only while new transactions arrive. Once Silver holds
-the whole CSV, a replay adds nothing and the page says so. Before a presentation, press **Reset** then **Start all**
-(about 7 min) to watch Live fill from the first minute.
+the whole CSV, a replay adds nothing and the page says so. To watch Live fill from the first minute, press **Reset**
+then **Start all** (about 7 min).
 
 ## How it works
 
@@ -110,15 +110,15 @@ the whole CSV, a replay adds nothing and the page says so. Before a presentation
    emails six alerts: target down, streaming behind or slow, no input, container memory, MinIO disk.
 
 ```
-src/fraud_lakehouse/   shared package: config, schemas, pure transforms, demo catalog
+src/fraud_lakehouse/   shared package: config, schemas, pure transforms, control center catalog
 producer/              CSV → Kafka entrypoint
 spark/                 image, spark-defaults.conf, streaming job
 dbt/                   staging and Gold models, tests in schema.yml
 airflow/dags/          gold_refresh, lakehouse_maintenance
 monitoring/            prometheus.yml, Grafana dashboards and alert rules
 notebooks/             fraud model (Spark MLlib)
-demo/                  demo page (HTML, CSS, JS, icons)
-scripts/               data preparation, Metabase setup, demo server, recovery check
+control-center/        control center page (HTML, CSS, JS, icons)
+scripts/               data preparation, Metabase setup, control center server, recovery check
 tests/                 unit tests, mirroring src/
 docs/                  architecture.md, images
 ```
@@ -131,7 +131,7 @@ The Makefile is the only entrypoint; `make help` lists every target.
 |---|---|
 | `make up-core` / `make up-all` | Start the pipeline, or every service but Jupyter, and wait until healthy |
 | `make down` | Stop every service, volumes kept |
-| `make demo` | Serve the demo page |
+| `make control-center` | Serve the control center |
 | `make beeline` | SQL shell on the Thrift Server |
 | `make psql db=metastore` | SQL shell on PostgreSQL (`metastore`, `airflow` or `metabase`) |
 | `make silver-count` | Bronze and Silver row counts, Silver duplicates |
@@ -146,7 +146,7 @@ The Makefile is the only entrypoint; `make help` lists every target.
 
 | UI | URL | Login |
 |---|---|---|
-| Demo page | http://localhost:8099 | – |
+| Control center | http://localhost:8099 | – |
 | Metabase | http://localhost:3000 | `METABASE_ADMIN_EMAIL` / `METABASE_ADMIN_PASSWORD` |
 | Airflow | http://localhost:8082 | `admin` / `make airflow-password` |
 | Grafana | http://localhost:3001 | `admin` / `GRAFANA_ADMIN_PASSWORD` |
@@ -206,7 +206,7 @@ The fraud model is trained by `notebooks/fraud_model.ipynb` (Spark MLlib, seed 4
 - Single node by design: one Kafka broker, one Spark worker and one MinIO drive. Nothing is replicated.
 - Bronze and the rejected table are append only, so a batch replayed after a crash can appear twice there. Silver's
   `MERGE` keeps it once.
-- The demo page has no login. It listens on 127.0.0.1 only: anyone with a shell on the machine can use it, as with
+- The control center has no login. It listens on 127.0.0.1 only: anyone with a shell on the machine can use it, as with
   `docker` itself.
 - MinIO serves its metrics without a token (`MINIO_PROMETHEUS_AUTH_TYPE=public`). That is acceptable on a laptop,
   not on a shared network.
@@ -216,7 +216,7 @@ The fraud model is trained by `notebooks/fraud_model.ipynb` (Spark MLlib, seed 4
    .
 - The dataset is simulated (Sparkov, Kaggle `kartik2112/fraud-detection`). The model's scores say nothing about
   real card traffic.
-- The demo page's logos come from [Simple Icons](https://simpleicons.org) 13.21.0 (CC0) and remain trademarks of
+- The control center's logos come from [Simple Icons](https://simpleicons.org) 13.21.0 (CC0) and remain trademarks of
   their owners.
 
 ## Contributing
