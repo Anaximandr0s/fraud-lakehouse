@@ -8,6 +8,7 @@ from fraud_lakehouse.model import (
     FEATURES,
     SEED,
     best_threshold,
+    check_splits,
     evaluate,
     pipeline,
     prepare,
@@ -135,3 +136,12 @@ def test_top_features_names_the_gbt_importances(spark):
     assert len(top) == 3
     assert all(isinstance(name, str) and 0 <= weight <= 1 for name, weight in top)
     assert [w for _, w in top] == sorted((w for _, w in top), reverse=True)
+
+
+def test_check_splits_names_the_missing_split_and_the_fix():
+    with pytest.raises(ValueError, match=r"test.*RATE"):
+        check_splits({"train": 37146})
+
+
+def test_check_splits_accepts_both_splits():
+    check_splits({"train": 10, "test": 5})

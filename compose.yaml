@@ -175,14 +175,18 @@ services:
 
   spark-thrift:
     <<: *spark
+    # Not start-thriftserver.sh: its bash wrapper stays PID 1 and never passes SIGTERM to the JVM,
+    # so every stop waited 10 s and ended in a SIGKILL.
     command: >-
-      /opt/spark/sbin/start-thriftserver.sh
+      /opt/spark/bin/spark-submit
+      --class org.apache.spark.sql.hive.thriftserver.HiveThriftServer2
+      --name "Thrift JDBC/ODBC Server"
       --driver-memory 640m
       --conf spark.driver.host=spark-thrift
       --conf spark.scheduler.mode=FAIR
+      spark-internal
     environment:
       <<: *s3-env
-      SPARK_NO_DAEMONIZE: "true"
       # Same glibc arena growth as spark-streaming: under dbt load it filled its 1g limit without it.
       MALLOC_ARENA_MAX: "2"
     ports:
