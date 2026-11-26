@@ -29,6 +29,17 @@ FEATURES = [*NUMERIC, "category"]
 THRESHOLDS = [round(0.01 * i, 2) for i in range(1, 100)]
 
 
+def check_splits(rows_per_split: dict[str, int]) -> None:
+    """Fails with the fix when a split is empty, instead of a cryptic error mid-training."""
+    missing = [split for split in ("train", "test") if not rows_per_split.get(split)]
+    if missing:
+        raise ValueError(
+            f"gold.ml_features has no {' or '.join(missing)} rows. The test split starts at"
+            " test_split_ts (dbt/dbt_project.yml), late in the replay: let the producer get past"
+            " it (RATE=500 in .env replays the CSV in about 1 h), then run make ml-features."
+        )
+
+
 def prepare(df: DataFrame) -> DataFrame:
     """Numeric features as doubles, with values for a card's first transactions (no history)."""
     return df.select(
