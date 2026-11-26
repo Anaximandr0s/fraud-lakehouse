@@ -104,7 +104,6 @@ code { font: 12px var(--mono); background: var(--stage); padding: 0 3px; border-
 #diagram text { font-family: var(--round); }
 .frame { fill: none; stroke: var(--ink); stroke-width: 6; }
 .zone { fill: none; stroke: var(--ink); stroke-width: 4; }
-.target { fill: none; stroke: var(--ink); stroke-width: 3; stroke-dasharray: 10 8; }
 .heading { font-size: 26px; font-weight: 600; text-anchor: middle; }
 .caption { font-size: 15px; font-weight: 700; text-anchor: middle; fill: var(--ink); }
 .middle { text-anchor: middle; }

@@ -49,7 +49,6 @@ const EDGES = [
   ["M730 746V762", "meta"],
   ["M430 915H461", (s) => running(s, "cadvisor") && running(s, "prometheus")],
   ["M595 915H626", (s) => running(s, "prometheus") && running(s, "grafana")],
-  ["M231 244H258", "meta"],
 ];
 
 const CADVISOR = "M2 4.5l6-3 6 3v7l-6 3-6-3z M2 4.5l6 3 6-3 M8 7.5v7";
@@ -200,17 +199,6 @@ function persona(parent, x, y, name, sub) {
 
 function drawStatic() {
   const back = $("back");
-  // Terraform and OCI are the deployment target, drawn outside the Docker frame and not clickable.
-  text(back, 128, 92, "caption", "Deployment target");
-  el("rect", { x: 25, y: 108, width: 206, height: 272, rx: 18, class: "target" }, back);
-  logo(back, "terraform", 128, 158, 52);
-  text(back, 128, 206, "caption", "Terraform");
-  text(back, 128, 236, "edge-label middle", "provisions");
-  logo(back, "oracle", 128, 280, 58);
-  text(back, 128, 330, "caption", "OCI · A1.Flex");
-  text(back, 128, 352, "persona-sub", "2 OCPU · 12 GB RAM");
-  text(back, 128, 369, "persona-sub", "200 GB storage");
-
   el("rect", { x: 262, y: 50, width: 1496, height: 980, rx: 44, class: "frame" }, back);
   logo(back, "docker", 352, 128, 110);
   text(back, 352, 222, "docker-word", "docker");
