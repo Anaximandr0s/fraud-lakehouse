@@ -46,8 +46,7 @@ Every service is open source, pinned and started by one command.
 | Observe | Prometheus 3.15, Grafana 13.3, cAdvisor | Metrics, dashboard, email alerts |
 
 Every image and jar version is pinned in [`.env.example`](.env.example). The full design is in
-[docs/architecture.md](docs/architecture.md): tables, schemas, ports, memory budget and build plan. The decisions
-behind it are in [docs/adr/](docs/adr/).
+[docs/architecture.md](docs/architecture.md): tables, schemas, ports, memory budget and build plan.
 
 ## Quick start
 
@@ -76,7 +75,7 @@ Once the jars, dataset and images are in place, `make up-all` takes about 7 minu
 ## Demo page
 
 `make demo` serves http://localhost:8099 from a host process bound to 127.0.0.1. No container gets the Docker socket
-([ADR 0009](docs/adr/0009-demo-page-on-the-host.md)).
+.
 
 - **Start all** runs `make up-all`, **Stop all** runs `make down`, and **Reset** deletes every volume (you must
   type `reset` to confirm). While an action runs, the page is locked and shows its output.
@@ -105,7 +104,7 @@ the whole CSV, a replay adds nothing and the page says so. Before a presentation
    aggregates (by category, hour, state, amount, age band) and the merchant and customer risk tables. dbt tests
    check every model.
 4. **Serve.** Metabase reads Silver and Gold over JDBC; its dashboards are created by code
-   ([ADR 0006](docs/adr/0006-metabase-dashboards-as-code.md)). Beeline gives a SQL shell, and JupyterLab trains the
+  . Beeline gives a SQL shell, and JupyterLab trains the
    fraud model on `gold.ml_features`.
 5. **Watch.** Prometheus scrapes Spark, the producer, MinIO and cAdvisor. Grafana shows the Pipeline dashboard and
    emails six alerts: target down, streaming behind or slow, no input, container memory, MinIO disk.
@@ -121,7 +120,7 @@ notebooks/             fraud model (Spark MLlib)
 demo/                  demo page (HTML, CSS, JS, icons)
 scripts/               data preparation, Metabase setup, demo server, recovery check
 tests/                 unit tests, mirroring src/
-docs/                  architecture.md, ADRs, images
+docs/                  architecture.md, images
 ```
 
 ## Commands
@@ -212,9 +211,9 @@ The fraud model is trained by `notebooks/fraud_model.ipynb` (Spark MLlib, seed 4
 - MinIO serves its metrics without a token (`MINIO_PROMETHEUS_AUTH_TYPE=public`). That is acceptable on a laptop,
   not on a shared network.
 - Version constraints:
-  - Airflow is pinned to 3.3, the last line on Python 3.10 ([ADR 0005](docs/adr/0005-airflow-standalone.md));
+  - Airflow is pinned to 3.3, the last line on Python 3.10;
   - Hive Metastore is pinned to 3.1.3, the newest one Spark 3.5 can talk to
-    ([ADR 0001](docs/adr/0001-iceberg-catalog.md)).
+   .
 - The dataset is simulated (Sparkov, Kaggle `kartik2112/fraud-detection`). The model's scores say nothing about
   real card traffic.
 - The demo page's logos come from [Simple Icons](https://simpleicons.org) 13.21.0 (CC0) and remain trademarks of
@@ -227,8 +226,7 @@ The fraud model is trained by `notebooks/fraud_model.ipynb` (Spark MLlib, seed 4
 2. Branch from `main` (`feat/short-description`). Keep pure logic in `src/fraud_lakehouse/` with unit tests, and add
    new commands as Makefile targets.
 3. Run `make lint test`. If you touch the stack, also run `make recovery-check`.
-4. Record any non-obvious decision as an ADR in `docs/adr/` (context, decision, consequences).
-5. Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat(spark): …`, `fix(dbt): …`). Never commit
+4. Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat(spark): …`, `fix(dbt): …`). Never commit
    `.env` or data.
 
 ## License
