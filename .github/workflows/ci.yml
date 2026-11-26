@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The release workflow runs the same checks before publishing.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   python:
@@ -89,3 +98,9 @@ jobs:
             echo "| hadolint producer/Dockerfile | ${{ steps.producer.outcome }} |"
             echo "| hadolint airflow/Dockerfile | ${{ steps.airflow.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  actionlint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
