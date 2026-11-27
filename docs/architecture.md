@@ -188,17 +188,22 @@ cluster; the fraud model notebook is described next.
 
 ## 7. Fraud model
 
-`notebooks/fraud_model.ipynb` trains on `gold.ml_features` on the cluster with Spark MLlib.
+`notebooks/fraud_model.ipynb` compares five models on `gold.ml_features`, trained on the cluster with Spark MLlib.
+It is committed with its outputs, so its tables and charts are readable on GitHub; the charts are also saved in
+`notebooks/figures/`.
 
-- **Split, in time order.** Fit on the `train` split (the fraudTrain.csv period), choose the decision threshold on
-  its latest 20 %, report on `test` (the fraudTest.csv period), touched once. A random split would let the model
-  learn from the future.
-- **Models.** Gradient-boosted trees and logistic regression with the same features and class weights (each class
-  carries half the training weight), against a random model whose PR-AUC equals the fraud rate.
-- **Metrics.** PR-AUC ranks the models: frauds are 0.4 % of the test rows, so accuracy is meaningless. Precision
-  and recall are read at the threshold with the best F1 on validation.
-- **Code.** Feature preparation, class weights, the time split and the metrics are in
-  `src/fraud_lakehouse/model.py`, unit-tested on a local SparkSession. Seed 42.
+- **Split, in time order.** Fit on the first 80 % of `train`, choose each model's threshold on the last 20 %,
+  report on `test` (the fraudTest.csv period), touched once. A random split would let the model learn from the
+  future.
+- **Models.** A random score and an amount-only rule as baselines; logistic regression, random forest and
+  gradient-boosted trees with the same features and class weights (each class carries half the training weight).
+- **Metrics.** PR-AUC (average precision) ranks the models: frauds are 0.4 % of the test rows, so accuracy is
+  meaningless and ROC-AUC flatters every model. Precision, recall and F1 are read at the threshold with the best F1
+  on validation. The notebook also reports alerts per day and the share of the fraud amount caught.
+- **Code.** Feature preparation, class weights and the time split are in `src/fraud_lakehouse/model.py`; metrics on
+  (label, score) arrays are in `src/fraud_lakehouse/metrics.py`. Both are unit-tested. Seed 42.
+
+![Precision-recall and ROC curves of the five models on the test split](../notebooks/figures/pr_roc_curves.png)
 
 The notebook needs the test period in Gold: the replay must pass 2020-06-21 (`RATE=500` replays the CSV in about
 1 h), then `make ml-features`. Before that, it stops on load and says so. `make notebook-run` runs it headless.
@@ -336,6 +341,10 @@ dependencies never meet Airflow's. Maintenance is a dbt macro that calls the Ice
 Spark or Hive client. Airflow is pinned to 3.3, the last line on Python 3.10.
 
 **Metabase dashboards as code** through the REST API (see [Serving](#metabase)).
+
+**Model metrics in numpy, threshold on validation.** Spark's evaluator reads only a probability vector, so it cannot
+score the rule baselines. Metrics on (label, score) arrays work for any score, give the curves, and pick an exact
+best-F1 threshold at a fraud's score. Training stays on the cluster; only the scores come back to the driver.
 
 **Control center on the host, not in a container** (see [Control center](#9-control-center)).
 
