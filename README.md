@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Anaximandr0s/fraud-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/Anaximandr0s/fraud-lakehouse/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Anaximandr0s/fraud-lakehouse)](https://github.com/Anaximandr0s/fraud-lakehouse/releases)
-[![Coverage 98.7 %](https://img.shields.io/badge/coverage-98.7%25-brightgreen.svg)](#testing)
+[![Coverage 98.8 %](https://img.shields.io/badge/coverage-98.8%25-brightgreen.svg)](#testing)
 ![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)
 ![Spark 3.5](https://img.shields.io/badge/spark-3.5-E25A1C.svg)
 ![Iceberg 1.12](https://img.shields.io/badge/iceberg-1.12-4A90E2.svg)
@@ -25,8 +25,9 @@ long-running services, all open source and pinned, started with one command and 
 - **Medallion layers on Iceberg.** Bronze keeps every message as received. Silver holds typed, validated,
   deduplicated rows, and a rejected table records why each invalid row was refused. Gold holds dbt models with data
   tests.
-- **Fraud model.** Gradient-boosted trees reach a PR-AUC of 0.88 on a time-based test split, against 0.004 for a
-  random model. See [Results](#results).
+- **Fraud model comparison.** Five models on a time-based split, from a random baseline to tree ensembles. Random
+  forest leads with a PR-AUC of 0.910 and stops 92 % of the fraud amount at 11 alerts a day. See
+  [Results](#results).
 - **Operations.** Healthchecks, restart policies and measured memory limits on every service, nightly Iceberg
   compaction, six email alerts.
 - **Control center.** A local page that draws the pipeline with live state and starts, stops and pauses services
@@ -150,22 +151,28 @@ nears its memory limit, or when MinIO runs out of disk.
 
 ## Results
 
-`notebooks/fraud_model.ipynb` trains on the cluster with Spark MLlib (seed 42):
+[`notebooks/fraud_model.ipynb`](notebooks/fraud_model.ipynb) compares five models trained on the cluster with Spark
+MLlib (seed 42), on a split that follows time:
 
-- the models learn from the train file's period (1,296,675 transactions);
-- each decision threshold is the best F1 on the latest 20 % of that period;
+- the models fit on the first 80 % of the train file's period (1,037,339 transactions);
+- each decision threshold is the best F1 on the last 20 % of that period (259,336 transactions);
 - the numbers below come from the test file's period (555,719 transactions, 0.386 % fraud), never used for
-  training or tuning. A random model's PR-AUC equals that fraud rate.
+  fitting or tuning.
 
-| Model | Threshold | PR-AUC | Precision | Recall |
-|---|---|---|---|---|
-| Random | – | 0.0039 | 0.0039 | – |
-| Logistic regression | 0.94 | 0.1872 | 0.2669 | 0.5604 |
-| Gradient-boosted trees | 0.95 | 0.8823 | 0.8147 | 0.8448 |
+| Model | PR-AUC | ROC-AUC | Precision | Recall | F1 | Alerts per day | Fraud amount caught |
+|---|---|---|---|---|---|---|---|
+| Random | 0.004 | 0.506 | 0.005 | 0.021 | 0.008 | 52 | 2.1 % |
+| Amount only (rule) | 0.137 | 0.833 | 0.290 | 0.445 | 0.351 | 17 | 78.3 % |
+| Logistic regression | 0.187 | 0.963 | 0.280 | 0.536 | 0.368 | 21 | 84.7 % |
+| **Random forest** | **0.910** | **0.996** | **0.869** | **0.837** | **0.853** | **11** | **92.3 %** |
+| Gradient-boosted trees | 0.867 | 0.996 | 0.858 | 0.791 | 0.823 | 10 | 89.2 % |
 
-At its threshold, gradient-boosted trees catch 84 % of the frauds, and 81 % of the transactions they flag are
-frauds. Their most important features are `log_amt` (0.494), `amt` (0.135) and `card_amt_ratio` (0.126): the
-amount, and how unusual it is for that card over the last 24 hours.
+![Precision-recall and ROC curves of the five models on the test period](notebooks/figures/pr_roc_curves.png)
+
+Random forest raises about 11 alerts a day, 87 % of them real frauds, and stops 92 % of the fraud amount. Both tree
+ensembles lean on the amount, on how unusual it is for the card, and on the time of day: frauds cluster in amount
+bands and at night, which a linear model cannot isolate. PR-AUC ranks the models because frauds are 0.4 % of the
+rows; ROC-AUC rates both ensembles 0.996 and hides the gap with logistic regression.
 
 ## How it works
 
@@ -183,13 +190,13 @@ amount, and how unusual it is for that card over the last 24 hours.
    alerts.
 
 ```
-src/fraud_lakehouse/   shared package: config, schemas, Silver transforms, model, dashboards, control center
+src/fraud_lakehouse/   shared package: config, schemas, Silver transforms, model, metrics, dashboards, control center
 producer/              CSV → Kafka entrypoint
 spark/                 Spark image, spark-defaults.conf, streaming job
 dbt/                   staging and Gold models, data tests
 airflow/               image and DAGs
 monitoring/            Prometheus config, Grafana dashboard and alert rules
-notebooks/             fraud model notebook
+notebooks/             fraud model notebook, with its outputs and figures
 control-center/        control center page
 scripts/               data preparation, Metabase setup, control center server, recovery check
 tests/                 unit tests
@@ -232,8 +239,8 @@ The Makefile is the only entrypoint; `make help` lists every target.
 | Check | Command | What it covers |
 |---|---|---|
 | Lint | `make lint` | ruff, lint and format |
-| Unit tests | `make test` | 102 tests on a local SparkSession: producer replay and resume, Silver parsing and validation, model features and metrics, dashboards, control center commands |
-| Coverage | `make test` | **98.7 %** branch coverage of `src/fraud_lakehouse`; the run fails under 95 % |
+| Unit tests | `make test` | 111 tests on a local SparkSession: producer replay and resume, Silver parsing and validation, model features and metrics, dashboards, control center commands |
+| Coverage | `make test` | **98.8 %** branch coverage of `src/fraud_lakehouse`; the run fails under 95 % |
 | Data tests | `make dbt args="test"` | `not_null` and `unique` on every Gold model |
 | Recovery | `make recovery-check` | full stop and start: no lost row, no offset gap, no duplicate |
 
