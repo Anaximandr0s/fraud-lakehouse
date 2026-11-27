@@ -141,6 +141,8 @@ batch duration, producer progress, scrape targets, each container's memory again
 Six alerts send an email when streaming stops, falls behind or slows down, when a target is down, when a container
 nears its memory limit, or when MinIO runs out of disk.
 
+![Grafana Pipeline dashboard](docs/images/grafana-pipeline.png)
+
 **Airflow** (http://localhost:8082) runs `gold_refresh` every 10 minutes (dbt freshness, run, test) and
 `lakehouse_maintenance` every night (Iceberg compaction, snapshot expiry, orphan file cleanup).
 
