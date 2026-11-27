@@ -1,126 +1,196 @@
 # fraud-lakehouse
 
 [![CI](https://github.com/Anaximandr0s/fraud-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/Anaximandr0s/fraud-lakehouse/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Coverage 98.7 %](https://img.shields.io/badge/coverage-98.7%25-brightgreen.svg)](#testing)
 ![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)
+![Spark 3.5](https://img.shields.io/badge/spark-3.5-E25A1C.svg)
+![Iceberg 1.12](https://img.shields.io/badge/iceberg-1.12-4A90E2.svg)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A streaming lakehouse for card fraud detection that runs end to end on one laptop with Docker Compose.
-Card transactions flow from Kafka through Spark Structured Streaming into Apache Iceberg tables
-(Bronze, Silver, Gold) on S3-compatible storage. From there they feed live dashboards, SQL and a fraud model.
-Every service is open source, pinned and started by one command.
+A real-time card fraud detection lakehouse that runs end to end on one laptop with Docker Compose.
+
+Card transactions stream from Kafka through Spark Structured Streaming into Apache Iceberg tables (Bronze, Silver,
+Gold) on S3-compatible storage. dbt builds the Gold layer every 10 minutes under Airflow. Metabase dashboards, a SQL
+endpoint and a fraud model notebook read the tables, while Prometheus and Grafana watch every container. 15
+long-running services, all open source and pinned, started with one command and run from a control center.
 
 ![Control center: the pipeline with live state, a service panel and the container list](docs/images/control-center.gif)
 
 ## Highlights
 
-- **Streaming ingestion without loss or duplicates.** Spark checkpoints its Kafka offsets, and Silver is
-  written with `MERGE` on `trans_num`. `make recovery-check` stops every container, starts it again and proves it:
-  - every Silver row of the earlier snapshot is still there;
-  - the Kafka offsets read after the restart have no gap;
-  - Silver has no duplicates.
-- **Medallion layers on Iceberg.**
-  - Bronze keeps every message as received.
-  - Silver holds typed, cleaned, deduplicated rows. Invalid rows go to a rejected table.
-  - Gold holds the dbt models built every 10 min.
-- **Serving.** Metabase dashboards (Live, Fraud patterns, Risk) and Beeline through the Spark Thrift Server, and
-  JupyterLab with PySpark for the fraud model.
-- **Operations.**
-  - Airflow schedules Gold and nightly table maintenance.
-  - Prometheus, Grafana and cAdvisor track every container and send email alerts.
-  - Every long-running service has a healthcheck, a restart policy and a measured memory limit.
-- **Control center.** A local page draws the pipeline with live state and links. It starts, stops and pauses
-  the stack without a terminal.
-- **Fraud model.** Gradient-boosted trees reach a PR-AUC of 0.88 on a time-based test split (see [Results](#results)).
+- **No loss, no duplicates.** Spark checkpoints its Kafka offsets and Silver is written with `MERGE` on
+  `trans_num`. `make recovery-check` stops the whole stack, starts it again and proves that no Silver row is lost,
+  no Kafka offset is skipped and no duplicate appears.
+- **Medallion layers on Iceberg.** Bronze keeps every message as received. Silver holds typed, validated,
+  deduplicated rows, and a rejected table records why each invalid row was refused. Gold holds dbt models with data
+  tests.
+- **Fraud model.** Gradient-boosted trees reach a PR-AUC of 0.88 on a time-based test split, against 0.004 for a
+  random model. See [Results](#results).
+- **Operations.** Healthchecks, restart policies and measured memory limits on every service, nightly Iceberg
+  compaction, six email alerts.
+- **Control center.** A local page that draws the pipeline with live state and starts, stops and pauses services
+  without a terminal.
 
 ## Architecture
 
-![Pipeline architecture: ingest, process, store and serve stages above the platform and monitoring services](docs/images/architecture.png)
+![Pipeline architecture: data ingestion, stream processing, Iceberg tables, the Thrift Server, Metabase, Beeline, JupyterLab and monitoring inside Docker](docs/images/architecture.png)
 
-| Stage | Tool | Role |
+| Stage | Tools | Role |
 |---|---|---|
-| Ingest | Python producer, Apache Kafka 4.3 (KRaft) | Replays the CSV as events, topic `transactions`, 3 partitions |
-| Process | Spark 3.5 Structured Streaming | Kafka → Bronze → Silver in one micro-batch |
-| Process | dbt-spark 1.11, Airflow 3.3 | Gold models every 10 min, daily compaction |
+| Ingest | Python producer, Apache Kafka 4.3 (KRaft) | Replays the dataset as live events, keyed by card |
+| Process | Spark 3.5 Structured Streaming | Kafka → Bronze → Silver every 30 s |
+| Process | dbt-spark 1.11, Airflow 3.3 | Gold models every 10 min, nightly table maintenance |
 | Store | Apache Iceberg 1.12, MinIO, Hive Metastore 3.1.3, PostgreSQL 18 | Table format, object storage, catalog |
 | Serve | Spark Thrift Server, Metabase 0.64, Beeline, JupyterLab | SQL over JDBC, dashboards, notebooks |
 | Observe | Prometheus 3.15, Grafana 13.3, cAdvisor | Metrics, dashboard, email alerts |
 
-Every image and jar version is pinned in [`.env.example`](.env.example). The full design is in
-[docs/architecture.md](docs/architecture.md): tables, schemas, ports, memory budget and build plan.
+The full design is in [docs/architecture.md](docs/architecture.md): tables and their columns, validation rules,
+DAGs, alerts, ports, the memory budget and the reasons behind each choice.
+
+## Dataset
+
+[Credit Card Transactions Fraud Detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection) on Kaggle,
+generated with the [Sparkov](https://github.com/namebrandon/Sparkov_Data_Generation) simulator: 999 cards paying
+693 merchants in 14 categories across the 50 US states and DC.
+
+| | Train file | Test file | Merged (`data/fraud_all.csv`) |
+|---|---|---|---|
+| Period | 2019-01-01 → 2020-06-21 | 2020-06-21 → 2020-12-31 | 2019-01-01 → 2020-12-31 |
+| Transactions | 1,296,675 | 555,719 | 1,852,394 |
+| Frauds | 7,506 (0.58 %) | 2,145 (0.39 %) | 9,651 (0.52 %) |
+
+Each row is one card payment: time, card number, merchant and category, amount, cardholder (name, gender, address,
+city population, job, date of birth), merchant coordinates, and the `is_fraud` label.
+
+How the project uses it:
+
+- `make data` downloads the zip (no Kaggle account needed), sorts the train file by time (1,858 rows are out of
+  order), merges both files and checks the result: 22 columns, time order, unique `trans_num`, row count.
+- The producer replays the merged file as live events. Silver drops the personal fields (name, street, date of
+  birth), replaces the card number with a salted hash, and derives age, distance to the merchant, hour and day of
+  week.
+- The boundary between the two files becomes the model's train/test split, so the model is always evaluated on
+  transactions that happened after the ones it learned from.
+- Silver corrects the simulator's traces: every merchant name starts with `fraud_` (not a label), `zip` loses its
+  leading zeros, and `unix_time` is shifted by 7 years.
 
 ## Quick start
 
-Requirements:
-- Linux with Docker Compose 2.24+ (built and measured on Ubuntu, 16 GB RAM, 6 cores);
-- [uv](https://docs.astral.sh/uv/) and GNU Make;
-- about 14 GB of free RAM for every service.
+You need Linux with Docker Compose 2.24+, [uv](https://docs.astral.sh/uv/), GNU Make, and about 14 GB of free RAM
+for every service (built and measured on a 16 GB, 6-core laptop).
 
-```
-cp .env.example .env   # then replace every change-me password
-make up-all            # downloads jars and the dataset, builds the images, starts every service but Jupyter
-make control-center    # control center on http://localhost:8099
+```bash
+cp .env.example .env     # then replace every change-me value
+make up-all              # downloads the jars and the dataset, builds the images, starts everything but JupyterLab
+make control-center      # http://localhost:8099
 ```
 
-Once the jars, dataset and images are in place, `make up-all` takes about 7 minutes.
+Once the downloads and images are in place, `make up-all` takes about 7 minutes. From then on the control center
+runs everything with buttons: stop, start, pause the producer, open each UI.
 
-### Stopping and resuming
+Every action is also a Make target:
 
-- **Stop all** on the page, or `make down`, removes every container and network. The services stop using RAM and
-  CPU, and their ports are released. The data stays in Docker volumes.
-- `make control-center` itself keeps port 8099 until you press `Ctrl+C` in its terminal. That closes the page, not the
-  services.
-- To resume, run `make control-center` (if it is not still running), open http://localhost:8099 and press **Start all**. The
-  producer continues from its saved row and Spark from its checkpoint.
+```bash
+make up-core             # the pipeline only: Kafka, Spark, Iceberg, producer
+make up-orchestration    # + Airflow
+make up-bi               # + Metabase
+make metabase-setup      # create the Metabase admin and dashboards (safe to rerun)
+make up-monitoring       # + Prometheus, Grafana, cAdvisor
+make up-notebook         # + JupyterLab
+make down                # stop everything; data stays in Docker volumes
+```
+
+The producer replays the CSV at `RATE` events per second: 20 by default, so the Live dashboard moves at a readable
+pace. Set `RATE=500` in `.env` to replay all 1.85 M transactions in about an hour, which the fraud model needs.
 
 ## Control center
 
-`make control-center` serves http://localhost:8099 from a host process bound to 127.0.0.1. No container gets the Docker socket
-.
+![Control center overview](docs/images/control-center.png)
 
-- **Start all** runs `make up-all`, **Stop all** runs `make down`, and **Reset** deletes every volume (you must
-  type `reset` to confirm). While an action runs, the page is locked and shows its output.
-- Click a card to see its role, ports, image, memory and links:
-  - MinIO folders, Spark UIs, Airflow, each Metabase dashboard, Grafana, Prometheus and JupyterLab;
-  - Hive Metastore lists every table with its row count, size and last write;
-  - PostgreSQL lists its databases;
-  - Beeline and PostgreSQL show their terminal commands.
-- The producer, Airflow, Metabase, JupyterLab, Prometheus, Grafana and cAdvisor can be stopped and started on their
-  own: ingestion (Kafka to Silver) never waits on them. Core services cannot.
-- **Containers** shows `docker compose ps` and `docker stats`.
-- The bottom bar shows the producer's position in the CSV, its rate, the time left and Spark's rates.
+`make control-center` serves a page on http://localhost:8099, bound to 127.0.0.1, that shows the whole pipeline:
 
-The Live dashboard reads the last hour of Silver, so it fills only while new transactions arrive. Once Silver holds
-the whole CSV, a replay adds nothing and the page says so. To watch Live fill from the first minute, press **Reset**
-then **Start all** (about 7 min).
+- **Live state.** Each card shows whether its service is running, starting, stopped or failed, with a live figure
+  (rows in each table, batch duration, producer rate). Dashed arrows mark where data is moving now. The bottom bar
+  shows the producer's position in the CSV, its rate, the time left, and Spark's input and processing rates.
+- **Service panels.** Click a card for its role, ports, image, memory and links: the MinIO folder of each table, the
+  Spark UIs, each Metabase dashboard, Grafana, Airflow, JupyterLab. The Hive Metastore panel lists every table with
+  its row count, size and last write.
+- **Actions.** **Start all**, **Stop all** and **Reset** (deletes every volume; you type `reset` to confirm). The
+  producer, Airflow, Metabase, JupyterLab and the monitoring services can be stopped on their own, because
+  ingestion never waits on them. **Containers** lists every container with its memory against its limit.
+
+Stopping keeps the data. To resume, press **Start all**: the producer continues from its saved row and Spark from
+its checkpoint.
+
+## Dashboards
+
+**Metabase** (http://localhost:3000) has three dashboards, created by code with `make metabase-setup`:
+
+- **Live** reads Silver: transactions, frauds, fraud rate and amount over the last hour, a per-minute line and the
+  latest frauds. It refreshes every minute while the producer runs.
+- **Fraud patterns** reads Gold: fraud rate by category, hour of day, state, amount band and age band.
+- **Risk** reads Gold: the riskiest merchants and cards.
+
+![Metabase Fraud patterns dashboard](docs/images/metabase-patterns.png)
+
+![Metabase Risk dashboard](docs/images/metabase-risk.png)
+
+**Grafana** (http://localhost:3001) shows the pipeline's health: Spark input against processed rows per second,
+batch duration, producer progress, scrape targets, each container's memory against its limit, and MinIO free disk.
+Six alerts send an email when streaming stops, falls behind or slows down, when a target is down, when a container
+nears its memory limit, or when MinIO runs out of disk.
+
+**Airflow** (http://localhost:8082) runs `gold_refresh` every 10 minutes (dbt freshness, run, test) and
+`lakehouse_maintenance` every night (Iceberg compaction, snapshot expiry, orphan file cleanup).
+
+![Airflow DAG list](docs/images/airflow-dags.png)
+
+## Results
+
+`notebooks/fraud_model.ipynb` trains on the cluster with Spark MLlib (seed 42):
+
+- the models learn from the train file's period (1,296,675 transactions);
+- each decision threshold is the best F1 on the latest 20 % of that period;
+- the numbers below come from the test file's period (555,719 transactions, 0.386 % fraud), never used for
+  training or tuning. A random model's PR-AUC equals that fraud rate.
+
+| Model | Threshold | PR-AUC | Precision | Recall |
+|---|---|---|---|---|
+| Random | – | 0.0039 | 0.0039 | – |
+| Logistic regression | 0.94 | 0.1872 | 0.2669 | 0.5604 |
+| Gradient-boosted trees | 0.95 | 0.8823 | 0.8147 | 0.8448 |
+
+At its threshold, gradient-boosted trees catch 84 % of the frauds, and 81 % of the transactions they flag are
+frauds. Their most important features are `log_amt` (0.494), `amt` (0.135) and `card_amt_ratio` (0.126): the
+amount, and how unusual it is for that card over the last 24 hours.
 
 ## How it works
 
-1. **Ingest.** `producer/` replays `data/fraud_all.csv` into Kafka at `RATE` events/s (default 20), keyed by card. It
-   saves its position once Kafka acknowledges, so a restart resumes where it stopped.
-2. **Stream.** `spark/jobs/streaming.py` reads Kafka in micro-batches. Each batch appends to
-   `bronze.transactions_raw`, cleans and types the rows with the pure functions of `src/fraud_lakehouse/silver.py`,
-   and merges them into `silver.transactions`.
-3. **Model.** Every 10 min, the Airflow DAG `gold_refresh` runs dbt through the Thrift Server. dbt builds the Gold
-   aggregates (by category, hour, state, amount, age band) and the merchant and customer risk tables. dbt tests
-   check every model.
-4. **Serve.** Metabase reads Silver and Gold over JDBC; its dashboards are created by code
-  . Beeline gives a SQL shell, and JupyterLab trains the
-   fraud model on `gold.ml_features`.
-5. **Watch.** Prometheus scrapes Spark, the producer, MinIO and cAdvisor. Grafana shows the Pipeline dashboard and
-   emails six alerts: target down, streaming behind or slow, no input, container memory, MinIO disk.
+1. **Ingest.** `producer/` replays `data/fraud_all.csv` into Kafka, keyed by card. It saves its position once Kafka
+   acknowledges, so a restart resumes where it stopped.
+2. **Stream.** `spark/jobs/streaming.py` reads Kafka every 30 s. Each batch is appended to
+   `bronze.transactions_raw`, then parsed, validated, cleaned and enriched by the pure functions in
+   `src/fraud_lakehouse/silver.py`, and merged into `silver.transactions`. Invalid rows land in
+   `silver.transactions_rejected` with their reason.
+3. **Model.** Airflow runs dbt through the Thrift Server: fraud rates by category, hour, state, amount and age;
+   merchant and customer risk; and `gold.ml_features`, whose card-level features only look at the past.
+4. **Serve.** Metabase and Beeline query Silver and Gold over JDBC. JupyterLab trains the models on the Spark
+   cluster.
+5. **Watch.** Prometheus scrapes Spark, the producer, MinIO and cAdvisor; Grafana draws the dashboard and sends the
+   alerts.
 
 ```
-src/fraud_lakehouse/   shared package: config, schemas, pure transforms, control center catalog
+src/fraud_lakehouse/   shared package: config, schemas, Silver transforms, model, dashboards, control center
 producer/              CSV → Kafka entrypoint
-spark/                 image, spark-defaults.conf, streaming job
-dbt/                   staging and Gold models, tests in schema.yml
-airflow/dags/          gold_refresh, lakehouse_maintenance
-monitoring/            prometheus.yml, Grafana dashboards and alert rules
-notebooks/             fraud model (Spark MLlib)
-control-center/        control center page (HTML, CSS, JS, icons)
+spark/                 Spark image, spark-defaults.conf, streaming job
+dbt/                   staging and Gold models, data tests
+airflow/               image and DAGs
+monitoring/            Prometheus config, Grafana dashboard and alert rules
+notebooks/             fraud model notebook
+control-center/        control center page
 scripts/               data preparation, Metabase setup, control center server, recovery check
-tests/                 unit tests, mirroring src/
-docs/                  architecture.md, images
+tests/                 unit tests
+docs/                  architecture and images
 ```
 
 ## Commands
@@ -129,20 +199,19 @@ The Makefile is the only entrypoint; `make help` lists every target.
 
 | Command | What it does |
 |---|---|
-| `make up-core` / `make up-all` | Start the pipeline, or every service but Jupyter, and wait until healthy |
-| `make down` | Stop every service, volumes kept |
+| `make up-all` / `make up-core` | Start every service but JupyterLab, or only the pipeline, and wait until healthy |
+| `make down` | Stop every service, data kept |
 | `make control-center` | Serve the control center |
 | `make beeline` | SQL shell on the Thrift Server |
 | `make psql db=metastore` | SQL shell on PostgreSQL (`metastore`, `airflow` or `metabase`) |
-| `make silver-count` | Bronze and Silver row counts, Silver duplicates |
+| `make silver-count` | Bronze and Silver row counts and Silver duplicates |
 | `make dbt args="run"` | Run dbt from the host |
+| `make ml-features` | Build `gold.ml_features` for the model |
 | `make up-notebook` / `make notebook-run` | Start JupyterLab, or run the fraud notebook headless |
-| `make metabase-check` / `make monitoring-check` | Run every dashboard card, list Prometheus targets |
+| `make metabase-check` / `make monitoring-check` | Run every dashboard card; list Prometheus targets |
 | `make recovery-check` | Restart everything and prove no row is lost |
 | `make reset-producer` | Replay the CSV from the start |
 | `make logs s=kafka` | Follow one service's logs |
-
-## Web UIs
 
 | UI | URL | Login |
 |---|---|---|
@@ -153,82 +222,30 @@ The Makefile is the only entrypoint; `make help` lists every target.
 | MinIO console | http://localhost:9001 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
 | JupyterLab | http://localhost:8888/lab | token `JUPYTER_TOKEN` |
 | Prometheus | http://localhost:9090 | – |
-| Spark master, streaming, Thrift | http://localhost:8080, :4040, :4041 | – |
-
-Logins come from `.env`. Kafka listens on `localhost:9094` for host clients, the Thrift Server on
-`localhost:10000`. Every port is listed in [architecture.md §8](docs/architecture.md#8-ports).
+| Spark master, streaming, Thrift UIs | http://localhost:8080, :4040, :4041 | – |
 
 ## Testing
 
-- `make lint test` runs ruff and the pytest unit tests. Silver transforms run on a local SparkSession and need
-  Java 17+.
-- `make dbt args="test"` runs the dbt data tests on Gold.
-- `make recovery-check` restarts the stack and checks for data loss, offset gaps and duplicates.
-- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push and pull request:
-  - ruff and pytest;
-  - `dbt parse`;
-  - `docker compose config`;
-  - hadolint on the Dockerfiles.
+| Check | Command | What it covers |
+|---|---|---|
+| Lint | `make lint` | ruff, lint and format |
+| Unit tests | `make test` | 102 tests on a local SparkSession: producer replay and resume, Silver parsing and validation, model features and metrics, dashboards, control center commands |
+| Coverage | `make test` | **98.7 %** branch coverage of `src/fraud_lakehouse`; the run fails under 95 % |
+| Data tests | `make dbt args="test"` | `not_null` and `unique` on every Gold model |
+| Recovery | `make recovery-check` | full stop and start: no lost row, no offset gap, no duplicate |
 
-## Results
+The unit tests need Java 17 for PySpark and nothing else: no Docker, no network.
 
-The fraud model is trained by `notebooks/fraud_model.ipynb` (Spark MLlib, seed 42):
-- training uses the train split (the fraudTrain.csv period, 1,296,675 transactions);
-- the decision threshold is the best F1 on the latest 20 % of the train split;
-- metrics come from the test split (555,719 transactions, 0.386 % fraud), never used for fitting or tuning;
-- a random model's PR-AUC equals the test fraud rate.
-
-| Model | Threshold | PR-AUC | Precision | Recall |
-|---|---|---|---|---|
-| Random | – | 0.0039 | 0.0039 | – |
-| LogisticRegression | 0.94 | 0.1872 | 0.2669 | 0.5604 |
-| GBT | 0.95 | 0.8823 | 0.8147 | 0.8448 |
-
-- GBT's 5 most important features: `log_amt` (0.494), `amt` (0.135), `card_amt_ratio` (0.126), category
-  `gas_transport` (0.047), category `grocery_pos` (0.030).
-- PR-AUC is Spark's trapezoid area under the full precision-recall curve (`numBins=0`), not scikit-learn's average
-  precision.
-- `make notebook-run` writes this table to `notebooks/out/results.md`, with the data snapshot it used.
-
-## Troubleshooting
-
-- **A password changed in `.env` has no effect.** Postgres sets role passwords only when its volume is created. Run
-  `ALTER ROLE … PASSWORD …` in `make psql`, or **Reset** if no data needs keeping.
-- **spark-streaming fails on restart after a long stop.** Kafka keeps events for 24 h, and the job fails
-  (`failOnDataLoss`) instead of silently skipping deleted events. Run `make reset-streaming` to restart from the
-  oldest event still in Kafka, then `make reset-producer` and `make up-core`. Silver ignores the rows it already
-  has; Bronze keeps the duplicates.
-- **A service is unhealthy.** Run `make logs s=<service>`. The **Containers** popup shows each one's memory against its
-  limit.
-
-## Limits
-
-- Single node by design: one Kafka broker, one Spark worker and one MinIO drive. Nothing is replicated.
-- Bronze and the rejected table are append only, so a batch replayed after a crash can appear twice there. Silver's
-  `MERGE` keeps it once.
-- The control center has no login. It listens on 127.0.0.1 only: anyone with a shell on the machine can use it, as with
-  `docker` itself.
-- MinIO serves its metrics without a token (`MINIO_PROMETHEUS_AUTH_TYPE=public`). That is acceptable on a laptop,
-  not on a shared network.
-- Version constraints:
-  - Airflow is pinned to 3.3, the last line on Python 3.10;
-  - Hive Metastore is pinned to 3.1.3, the newest one Spark 3.5 can talk to
-   .
-- The dataset is simulated (Sparkov, Kaggle `kartik2112/fraud-detection`). The model's scores say nothing about
-  real card traffic.
-- The control center's logos come from [Simple Icons](https://simpleicons.org) 13.21.0 (CC0) and remain trademarks of
-  their owners.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push and pull request: ruff, pytest with
+coverage, `dbt parse`, `docker compose config`, promtool, hadolint on every Dockerfile, and actionlint. Pushing a
+`vX.Y.Z` tag reruns CI and publishes a [GitHub release](https://github.com/Anaximandr0s/fraud-lakehouse/releases).
 
 ## Contributing
 
-1. Read [docs/architecture.md](docs/architecture.md). It is the source of truth: if the code disagrees with it, open
-   an issue first.
-2. Branch from `main` (`feat/short-description`). Keep pure logic in `src/fraud_lakehouse/` with unit tests, and add
-   new commands as Makefile targets.
-3. Run `make lint test`. If you touch the stack, also run `make recovery-check`.
-4. Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat(spark): …`, `fix(dbt): …`). Never commit
-   `.env` or data.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, where code goes and how
+changes are reviewed.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The control center's logos come from [Simple Icons](https://simpleicons.org) (CC0) and remain
+trademarks of their owners.

@@ -1,47 +1,69 @@
 # Contributing
 
-Bug reports, fixes and improvements are welcome. Open an issue first for anything larger than a small fix, so
-we can agree on the approach before you spend time on it.
+Thanks for taking the time to contribute. Bug reports, fixes, documentation and new features are all welcome.
 
-## Set up
+## Before you start
 
-You need Docker with Compose v2, [uv](https://docs.astral.sh/uv/), Java 17 (for the PySpark unit tests) and
-about 12 GB of free RAM to run the full stack.
+- **Bugs**: open an [issue](https://github.com/Anaximandr0s/fraud-lakehouse/issues/new/choose) with the command
+  you ran, what you expected and the output (`make logs s=<service>` helps).
+- **Features and larger changes**: open an issue first to agree on the approach. The stack runs on one 16 GB
+  laptop, so any new service has to fit the [memory budget](docs/architecture.md#memory-budget).
+- **Security issues**: do not open a public issue; see [SECURITY.md](SECURITY.md).
 
-```bash
-uv sync                    # Python 3.10 environment with the dev and dbt tools
-uv run pre-commit install  # ruff on every commit
-make test                  # unit tests, no Docker needed
-```
+## Development setup
 
-## Where things go
-
-- Logic goes in `src/fraud_lakehouse/` as pure functions (DataFrame in, DataFrame out; text in, data out),
-  with unit tests in `tests/`. Spark jobs, the producer and scripts stay thin entrypoints around them.
-- Every command is a Makefile target. Every image and jar version is pinned in `.env.example`.
-- Every long-running service needs a healthcheck, `restart: unless-stopped` and a memory limit that keeps the
-  whole stack inside the memory budget in [docs/architecture.md](docs/architecture.md).
-- Jobs must be safe to restart: no lost events, no duplicates in Silver.
-
-## Before you open a pull request
+Requirements: Docker with Compose 2.24+, [uv](https://docs.astral.sh/uv/), GNU Make, Java 17 (for the PySpark
+unit tests), and about 14 GB of free RAM to run every service.
 
 ```bash
-make lint test             # ruff, then the pytest unit tests
-make recovery-check        # only if you changed the stack: down, up, and Silver loses nothing
+git clone https://github.com/Anaximandr0s/fraud-lakehouse.git && cd fraud-lakehouse
+uv sync                      # Python 3.10 with the dev and dbt dependencies
+uv run pre-commit install    # ruff on every commit
+make test                    # unit tests: no Docker, no network
 ```
 
-## Commits and pull requests
+To run the stack: `cp .env.example .env`, then `make up-core` for the pipeline alone or `make up-all` for
+everything. `make help` lists every target.
 
-- Branch from `main`: `feat/short-description`, `fix/short-description`.
-- [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, imperative and
-  lowercase, for example `fix(spark): stop the thrift server cleanly on sigterm`.
-  Types: `feat` `fix` `refactor` `test` `docs` `ci` `build` `chore` `perf`.
-  Scopes: `producer` `spark` `dbt` `airflow` `compose` `monitoring` `ci` `docs`.
-- One logical change per commit. The PR title follows the same format; CI checks it.
-- Never commit `.env` or anything under `data/`.
+## Where code goes
 
-## Releases
+| Change | Location | Tested by |
+|---|---|---|
+| Transformation or business logic | `src/fraud_lakehouse/`, as a pure function | a unit test in `tests/` |
+| Spark job, producer, script | `spark/jobs/`, `producer/`, `scripts/`: thin entrypoints that call the package | the unit tests of what they call |
+| Gold model | `dbt/models/gold/` | `not_null` / `unique` tests in `schema.yml` |
+| Dashboard card | `src/fraud_lakehouse/dashboards.py`, then `make metabase-setup` | `tests/test_dashboards.py` |
+| Service | `compose.yaml`, with its image version in `.env.example` | `docker compose config`, `make recovery-check` |
+| Command | a Makefile target with a `##` description | – |
 
-Versions follow [SemVer](https://semver.org/). To release, move the `Unreleased` notes in
-[CHANGELOG.md](CHANGELOG.md) under a new version heading, merge, then push a `vX.Y.Z` tag: the release workflow
-reruns CI and publishes a GitHub release with those notes.
+The conventions behind this layout:
+
+- Business logic stays out of I/O, so it can be tested on a local SparkSession in seconds.
+- Every image and jar version is pinned in `.env.example`; never `latest`.
+- Every long-running service has a healthcheck, `restart: unless-stopped` and a measured memory limit.
+- Every Spark application sets `spark.cores.max=2`, or it starves the others on the shared worker.
+- Every job is safe to restart: no lost event, no duplicate in Silver.
+- Configuration comes from `.env`; secrets never land in the repository.
+
+## Checks
+
+```bash
+make lint                    # ruff lint and format check
+make test                    # pytest with branch coverage; fails under 95 %
+make dbt args="test"         # dbt data tests, with the stack running
+make recovery-check          # if you changed the stack: stop, start, and nothing is lost
+```
+
+CI runs lint, tests, `dbt parse`, `docker compose config`, promtool, hadolint and actionlint on every pull request.
+
+## Pull requests
+
+1. Fork the repository and branch from `main`.
+2. Keep the pull request focused on one change; split unrelated work.
+3. Fill in the template: what changed, why, and the commands you ran with their results.
+4. Update the README or `docs/architecture.md` when behaviour, commands or ports change.
+5. CI must be green. The maintainer reviews every pull request; changes are squash-merged.
+
+## License
+
+By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE).
