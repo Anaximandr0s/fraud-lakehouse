@@ -1,6 +1,7 @@
 # fraud-lakehouse
 
 [![CI](https://github.com/Anaximandr0s/fraud-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/Anaximandr0s/fraud-lakehouse/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Anaximandr0s/fraud-lakehouse)](https://github.com/Anaximandr0s/fraud-lakehouse/releases)
 [![Coverage 98.7 %](https://img.shields.io/badge/coverage-98.7%25-brightgreen.svg)](#testing)
 ![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)
 ![Spark 3.5](https://img.shields.io/badge/spark-3.5-E25A1C.svg)
@@ -139,6 +140,8 @@ its checkpoint.
 batch duration, producer progress, scrape targets, each container's memory against its limit, and MinIO free disk.
 Six alerts send an email when streaming stops, falls behind or slows down, when a target is down, when a container
 nears its memory limit, or when MinIO runs out of disk.
+
+![Grafana Pipeline dashboard](docs/images/grafana-pipeline.png)
 
 **Airflow** (http://localhost:8082) runs `gold_refresh` every 10 minutes (dbt freshness, run, test) and
 `lakehouse_maintenance` every night (Iceberg compaction, snapshot expiry, orphan file cleanup).

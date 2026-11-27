@@ -217,6 +217,8 @@ Spark does not commit offsets to Kafka, so lag is read from Spark itself: proces
 Grafana provisions everything from `monitoring/grafana/`: the data source, the Pipeline dashboard and six email
 alerts (evaluated every 30 s, repeated every 4 h while they last).
 
+![Grafana Pipeline dashboard](images/grafana-pipeline.png)
+
 | Alert | Fires when | For |
 |---|---|---|
 | Target down | a scrape target does not answer | 1 min |
