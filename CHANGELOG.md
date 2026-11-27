@@ -5,6 +5,24 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-27
+
+### Added
+
+- The fraud model notebook compares five models on the same time-based split: a random score, an amount-only
+  rule, logistic regression, random forest and gradient-boosted trees. Random forest leads with a PR-AUC of 0.910
+  on the test period (gradient-boosted trees 0.867, logistic regression 0.187).
+- The notebook reports ROC-AUC, F1, confusion matrices, feature importances, alerts per day and the share of the
+  fraud amount caught, and saves its charts in `notebooks/figures/`.
+- `src/fraud_lakehouse/metrics.py`: PR and ROC curves, average precision, ROC-AUC and an exact best-F1 threshold on
+  (label, score) arrays, for model scores and rule baselines alike.
+
+### Changed
+
+- The notebook is committed with its outputs, so its results are readable on GitHub; `make notebook-run` executes
+  it in place and `notebooks/out/` is gone.
+- PR-AUC is now average precision (the step-wise area) instead of Spark's trapezoid area under the PR curve.
+
 ## [1.0.0] - 2026-11-27
 
 First public release: the whole pipeline runs on one laptop with `make up-all`.
@@ -44,5 +62,6 @@ First public release: the whole pipeline runs on one laptop with `make up-all`.
   check on PR titles. A release workflow publishes a GitHub release from each `vX.Y.Z` tag.
 - Dependabot updates for GitHub Actions and Python dependencies, kept on Spark 3.5.
 
-[Unreleased]: https://github.com/Anaximandr0s/fraud-lakehouse/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Anaximandr0s/fraud-lakehouse/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Anaximandr0s/fraud-lakehouse/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Anaximandr0s/fraud-lakehouse/releases/tag/v1.0.0
