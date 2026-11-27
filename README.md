@@ -1,6 +1,7 @@
 # fraud-lakehouse
 
 [![CI](https://github.com/Anaximandr0s/fraud-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/Anaximandr0s/fraud-lakehouse/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Anaximandr0s/fraud-lakehouse)](https://github.com/Anaximandr0s/fraud-lakehouse/releases)
 [![Coverage 98.7 %](https://img.shields.io/badge/coverage-98.7%25-brightgreen.svg)](#testing)
 ![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)
 ![Spark 3.5](https://img.shields.io/badge/spark-3.5-E25A1C.svg)
