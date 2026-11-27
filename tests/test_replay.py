@@ -1,11 +1,12 @@
 import csv
 import json
+from dataclasses import replace
 
 import pytest
 from prometheus_client import CollectorRegistry
 
 from fraud_lakehouse.config import ProducerConfig
-from fraud_lakehouse.replay import ReplayMetrics, replay
+from fraud_lakehouse.replay import ReplayMetrics, on_delivery, replay
 from fraud_lakehouse.schemas import CSV_COLUMNS
 
 
@@ -89,3 +90,52 @@ def test_a_stop_before_the_end_saves_the_position_and_is_not_finished(config, me
     assert config.position_file.read_text() == "2"
     assert metrics.position._value.get() == 2
     assert metrics.finished._value.get() == 0
+
+
+class UnacknowledgedKafka(FakeKafka):
+    def flush(self, timeout):
+        return len(self.sent)
+
+
+def test_unacknowledged_events_keep_the_saved_position(config, metrics):
+    config.position_file.write_text("1")
+
+    with pytest.raises(RuntimeError, match="not acknowledged"):
+        replay(UnacknowledgedKafka(), config, metrics)
+
+    assert config.position_file.read_text() == "1"
+    assert metrics.finished._value.get() == 0
+
+
+def test_a_failed_delivery_stops_the_replay():
+    with pytest.raises(RuntimeError, match="delivery failed"):
+        on_delivery("broker down", None)
+
+
+def test_a_csv_with_another_header_is_refused(config, metrics):
+    config.data_file.write_text("a,b,c\n1,2,3\n")
+
+    with pytest.raises(ValueError, match="unexpected header"):
+        replay(FakeKafka(), config, metrics)
+
+
+def test_replay_waits_between_sends_to_hold_the_rate(config, metrics, monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("fraud_lakehouse.replay.time.sleep", sleeps.append)
+
+    replay(FakeKafka(), replace(config, rate=10), metrics)
+
+    # Row n is due n / rate seconds after the start; sleep is mocked, so no time passes.
+    assert sleeps == pytest.approx([0.1, 0.2, 0.3, 0.4], abs=0.01)
+
+
+def test_position_is_saved_during_the_replay_not_only_at_the_end(config, metrics, monkeypatch):
+    monkeypatch.setattr("fraud_lakehouse.replay.CHECKPOINT_SECONDS", 0)
+    saved = []
+    monkeypatch.setattr(
+        "fraud_lakehouse.replay.save_position", lambda path, position: saved.append(position)
+    )
+
+    replay(FakeKafka(), config, metrics)
+
+    assert saved == [1, 2, 3, 4, 5, 5]

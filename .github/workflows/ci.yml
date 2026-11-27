@@ -49,6 +49,7 @@ jobs:
             if [ -f pytest.log ]; then
               echo
               echo "pytest: $(tail -n 1 pytest.log | tr -d '=' | xargs)"
+              echo "$(grep -oE 'Total coverage: [0-9.]+%' pytest.log)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

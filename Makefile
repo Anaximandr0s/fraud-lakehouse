@@ -11,8 +11,8 @@ lint: ## ruff check + ruff format --check
 	uv run ruff check .
 	uv run ruff format --check .
 
-test: ## Unit tests (pytest)
-	uv run pytest
+test: ## Unit tests (pytest) with branch coverage of src/fraud_lakehouse (fails under 95 %)
+	uv run pytest --cov
 
 jars: ## Download pinned jars into jars/ and check their Maven sha1
 	set -a && . ./.env && set +a && scripts/fetch_jars.sh

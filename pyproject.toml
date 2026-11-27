@@ -34,6 +34,7 @@ dev = [
     "prometheus-client>=0.26.0",
     "pyspark==3.5.10",
     "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
     "pyyaml>=6.0.3",
     "ruff>=0.17.5",
 ]
@@ -49,3 +50,12 @@ producer = [
 
 [tool.uv]
 default-groups = ["dev", "dbt"]
+
+[tool.coverage.run]
+source = ["fraud_lakehouse"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 95

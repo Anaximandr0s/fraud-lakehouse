@@ -10,6 +10,7 @@ from fraud_lakehouse.model import (
     best_threshold,
     check_splits,
     evaluate,
+    fraud_probability,
     pipeline,
     prepare,
     time_split,
@@ -145,3 +146,9 @@ def test_check_splits_names_the_missing_split_and_the_fix():
 
 def test_check_splits_accepts_both_splits():
     check_splits({"train": 10, "test": 5})
+
+
+def test_fraud_probability_is_the_second_class_probability(spark):
+    df = spark.createDataFrame([(Vectors.dense([0.3, 0.7]),)], ["probability"])
+
+    assert fraud_probability(df).first().p_fraud == pytest.approx(0.7)
